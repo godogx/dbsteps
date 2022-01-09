@@ -28,6 +28,17 @@ dbm.Instances = map[string]dbsteps.Instance{
 }
 ```
 
+Row types should be structs with `db` field tags, for example:
+
+```go
+type MyRow struct {
+    ID   int    `db:"id"`
+    Name string `db:"name"`
+}
+```
+
+These structures are used to map data between database and `gherkin` tables.
+
 ## Table Mapper Configuration
 
 Table mapper allows customizing decoding string values from godog table cells into Go row structures and back.
@@ -138,3 +149,10 @@ And no rows are available in table "my_another_table" of database "my_db"
 ```
 
 The name of database instance `of database "my_db"` can be omitted in all steps, in such case `"default"` will be used from database instance name.
+
+## Concurrent Usage
+
+Please note, due to centralized nature of database instance, scenarios that work with same tables would conflict.
+In order to avoid conflicts, `dbsteps` locks access to a specific scenario until that scenario is finished.
+The lock is per table, so if scenarios are operating on different tables, they will not conflict.
+It is safe to use concurrent scenarios.

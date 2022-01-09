@@ -22,6 +22,8 @@ linters-settings:
 linters:
   enable-all: true
   disable:
+    - gosec
+    - nilnil
     - lll
     - maligned
     - gochecknoglobals
