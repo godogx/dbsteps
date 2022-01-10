@@ -16,15 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func (s *synchronized) isLocked(ctx context.Context, service string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	lock := s.locks[service]
-
-	return lock != nil && lock != ctx.Value(s.ctxKey).(chan struct{})
-}
-
 func TestNewManager_concurrent(t *testing.T) {
 	dbm := NewManager()
 
@@ -61,7 +52,7 @@ func TestNewManager_concurrent(t *testing.T) {
 		ScenarioInitializer: func(s *godog.ScenarioContext) {
 			dbm.RegisterSteps(s)
 			s.Step(`^I should not be blocked for "([^"]*)"$`, func(ctx context.Context, key string) error {
-				if dbm.sync.isLocked(ctx, key) {
+				if dbm.lock.IsLocked(ctx, key) {
 					return fmt.Errorf("%s is locked", key)
 				}
 
@@ -122,7 +113,7 @@ func TestNewManager_concurrent_blocked(t *testing.T) {
 		ScenarioInitializer: func(s *godog.ScenarioContext) {
 			dbm.RegisterSteps(s)
 			s.Step(`^I should not be blocked for "([^"]*)"$`, func(ctx context.Context, key string) error {
-				if dbm.sync.isLocked(ctx, key) {
+				if dbm.lock.IsLocked(ctx, key) {
 					return fmt.Errorf("%s is locked", key)
 				}
 

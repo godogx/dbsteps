@@ -9,6 +9,7 @@ require (
 	github.com/bool64/shared v0.1.4
 	github.com/bool64/sqluct v0.1.9
 	github.com/cucumber/godog v0.12.3
+	github.com/godogx/resource v0.1.0
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/stretchr/testify v1.7.0
 	github.com/swaggest/form/v5 v5.0.1

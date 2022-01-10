@@ -130,6 +130,7 @@ import (
 	"github.com/bool64/shared"
 	"github.com/bool64/sqluct"
 	"github.com/cucumber/godog"
+	"github.com/godogx/resource"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/swaggest/form/v5"
@@ -140,7 +141,7 @@ const Default = "default"
 
 // RegisterSteps adds database manager context to test suite.
 func (m *Manager) RegisterSteps(s *godog.ScenarioContext) {
-	m.sync.register(s)
+	m.lock.Register(s)
 	m.registerPrerequisites(s)
 	m.registerAssertions(s)
 }
@@ -228,14 +229,14 @@ func NewManager() *Manager {
 	return &Manager{
 		TableMapper: NewTableMapper(),
 		Instances:   make(map[string]Instance),
-		sync:        newSynchronized(nil),
+		lock:        resource.NewLock(nil),
 		Vars:        &shared.Vars{},
 	}
 }
 
 // Manager owns database connections.
 type Manager struct {
-	sync *synchronized
+	lock *resource.Lock
 
 	TableMapper *TableMapper
 	Instances   map[string]Instance
@@ -291,7 +292,7 @@ func (m *Manager) instance(ctx context.Context, tableName, dbName string) (Insta
 	}
 
 	// Locking per table.
-	_, err := m.sync.acquireLock(ctx, dbName+"::"+tableName)
+	_, err := m.lock.Acquire(ctx, dbName+"::"+tableName)
 	if err != nil {
 		return Instance{}, nil, ctx, err
 	}
