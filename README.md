@@ -1,11 +1,11 @@
 # Cucumber database steps for Go
 
 [![Build Status](https://github.com/godogx/dbsteps/workflows/test-unit/badge.svg)](https://github.com/godogx/dbsteps/actions?query=branch%3Amaster+workflow%3Atest-unit)
-[![Coverage Status](https://codecov.io/gh/bool64/dbsteps/branch/master/graph/badge.svg)](https://codecov.io/gh/bool64/dbsteps)
+[![Coverage Status](https://codecov.io/gh/godogx/dbsteps/branch/master/graph/badge.svg)](https://codecov.io/gh/godogx/dbsteps)
 [![GoDevDoc](https://img.shields.io/badge/dev-doc-00ADD8?logo=go)](https://pkg.go.dev/github.com/godogx/dbsteps)
-[![Time Tracker](https://wakatime.com/badge/github/bool64/dbsteps.svg)](https://wakatime.com/badge/github/bool64/dbsteps)
-![Code lines](https://sloc.xyz/github/bool64/dbsteps/?category=code)
-![Comments](https://sloc.xyz/github/bool64/dbsteps/?category=comments)
+[![Time Tracker](https://wakatime.com/badge/github/godogx/dbsteps.svg)](https://wakatime.com/badge/github/godogx/dbsteps)
+![Code lines](https://sloc.xyz/github/godogx/dbsteps/?category=code)
+![Comments](https://sloc.xyz/github/godogx/dbsteps/?category=comments)
 
 This module implements database-related step definitions
 for [`github.com/cucumber/godog`](https://github.com/cucumber/godog).
