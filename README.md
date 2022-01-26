@@ -14,16 +14,18 @@ for [`github.com/cucumber/godog`](https://github.com/cucumber/godog).
 
 Databases instances should be configured with `Manager.Instances`.
 
-```go
-dbm := dbsteps.Manager{}
-
-dbm.Instances = map[string]dbsteps.Instance{
-    "my_db": {
-        Storage: storage,
-        Tables: map[string]interface{}{
-            "my_table":           new(repository.MyRow),
-            "my_another_table":   new(repository.MyAnotherRow),
-        },
+```
+// Initialize database manager with storage and table rows references.
+dbm := dbsteps.NewManager()
+dbm.Instances["my_db"] = dbsteps.Instance{
+    Storage: storage,
+    Tables: map[string]interface{}{
+        "my_table":         new(repository.MyRow),
+        "my_another_table": new(repository.MyAnotherRow),
+    },
+    // Optionally configure statements to execute after deleting rows from table.
+    PostCleanup: map[string][]string{
+        "my_table": {"ALTER SEQUENCE my_table_id_seq RESTART"},
     },
 }
 ```
@@ -53,6 +55,7 @@ tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
     if err != nil {
         return nil, err
     }
+	
     return m, err
 }, repository.Meta{})
 
@@ -62,9 +65,8 @@ tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
 }, pq.StringArray{})
 
 // Create database manager with custom mapper.
-dbm := dbsteps.Manager{
-    TableMapper: tableMapper,
-}
+dbm := dbsteps.NewManager()
+dbm.TableMapper = tableMapper
 ```
 
 ## Step Definitions
