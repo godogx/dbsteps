@@ -55,6 +55,7 @@ tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
     if err != nil {
         return nil, err
     }
+	
     return m, err
 }, repository.Meta{})
 

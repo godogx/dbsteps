@@ -52,6 +52,7 @@ func ExampleNewTableMapper() {
 		if err != nil {
 			return nil, err
 		}
+
 		return data, err
 	}, jsonData{})
 
