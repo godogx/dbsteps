@@ -224,7 +224,7 @@ func (m *Manager) registerAssertions(s *godog.ScenarioContext) {
 		})
 }
 
-// NewManager initializes instance of database Manager.
+// NewManager creates an instance of database Manager.
 func NewManager() *Manager {
 	return &Manager{
 		TableMapper: NewTableMapper(),
@@ -235,6 +235,8 @@ func NewManager() *Manager {
 }
 
 // Manager owns database connections.
+//
+// Please use NewManager to create an instance.
 type Manager struct {
 	lock *resource.Lock
 
