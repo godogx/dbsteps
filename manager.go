@@ -1,68 +1,67 @@
 // Package dbsteps provides godog steps to handle database state.
 //
-// Database Configuration
+// # Database Configuration
 //
 // Databases instances should be configured with Manager.Instances.
 //
-//		dbm := dbsteps.Manager{}
+//	dbm := dbsteps.Manager{}
 //
-//		dbm.Instances = map[string]dbsteps.Instance{
-//			"my_db": {
-//				Storage: storage,
-//				Tables: map[string]interface{}{
-//					"my_table":           new(repository.MyRow),
-//					"my_another_table":   new(repository.MyAnotherRow),
-//				},
+//	dbm.Instances = map[string]dbsteps.Instance{
+//		"my_db": {
+//			Storage: storage,
+//			Tables: map[string]interface{}{
+//				"my_table":           new(repository.MyRow),
+//				"my_another_table":   new(repository.MyAnotherRow),
 //			},
-//		}
+//		},
+//	}
 //
-// Table TableMapper Configuration
+// # Table TableMapper Configuration
 //
 // Table mapper allows customizing decoding string values from godog table cells into Go row structures and back.
 //
-//		tableMapper := dbsteps.NewTableMapper()
+//	tableMapper := dbsteps.NewTableMapper()
 //
-//		// Apply JSON decoding to a particular type.
-//		tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
-//			m := repository.Meta{}
-//			err := json.Unmarshal([]byte(s), &m)
-//			if err != nil {
-//				return nil, err
-//			}
-//			return m, err
-//		}, repository.Meta{})
-//
-//		// Apply string splitting to github.com/lib/pq.StringArray.
-//		tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
-//			return pq.StringArray(strings.Split(s, ",")), nil
-//		}, pq.StringArray{})
-//
-//		// Create database manager with custom mapper.
-//		dbm := dbsteps.Manager{
-//			TableMapper: tableMapper,
+//	// Apply JSON decoding to a particular type.
+//	tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
+//		m := repository.Meta{}
+//		err := json.Unmarshal([]byte(s), &m)
+//		if err != nil {
+//			return nil, err
 //		}
+//		return m, err
+//	}, repository.Meta{})
 //
+//	// Apply string splitting to github.com/lib/pq.StringArray.
+//	tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
+//		return pq.StringArray(strings.Split(s, ",")), nil
+//	}, pq.StringArray{})
 //
-// Step Definitions
+//	// Create database manager with custom mapper.
+//	dbm := dbsteps.Manager{
+//		TableMapper: tableMapper,
+//	}
+//
+// # Step Definitions
 //
 // Delete all rows from table.
 //
-//   	Given there are no rows in table "my_table" of database "my_db"
+//	Given there are no rows in table "my_table" of database "my_db"
 //
 // Populate rows in a database with a gherkin table.
 //
-//	   And these rows are stored in table "my_table" of database "my_db"
-//		 | id | foo   | bar | created_at           | deleted_at           |
-//		 | 1  | foo-1 | abc | 2021-01-01T00:00:00Z | NULL                 |
-//		 | 2  | foo-1 | def | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
-//		 | 3  | foo-2 | hij | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
+//		   And these rows are stored in table "my_table" of database "my_db"
+//			 | id | foo   | bar | created_at           | deleted_at           |
+//			 | 1  | foo-1 | abc | 2021-01-01T00:00:00Z | NULL                 |
+//			 | 2  | foo-1 | def | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
+//			 | 3  | foo-2 | hij | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
 //
-//  Or with an CSV file
+//	 Or with an CSV file
 //
-//	   And rows from this file are stored in table "my_table" of database "my_db"
-//		 """
-//		 path/to/rows.csv
-//		 """
+//		   And rows from this file are stored in table "my_table" of database "my_db"
+//			 """
+//			 path/to/rows.csv
+//			 """
 //
 // Assert rows existence in a database.
 //
@@ -112,7 +111,7 @@
 //
 // Assert no rows exist in a database.
 //
-//	   And no rows are available in table "my_another_table" of database "my_db"
+//	And no rows are available in table "my_another_table" of database "my_db"
 package dbsteps
 
 import (
@@ -344,12 +343,12 @@ func loadTableFromFile(filePath string) (rows [][]string, err error) {
 		return nil, errMissingFileName
 	}
 
-	f, err := os.Open(filePath) // nolint:gosec // Intended file inclusion.
+	f, err := os.Open(filePath) //nolint:gosec // Intended file inclusion.
 	if err != nil {
 		return nil, err
 	}
 
-	defer func() { // nolint:gosec // False positive: G307: Deferring unsafe method "Close" on type "*os.File" (gosec)
+	defer func() { //nolint:gosec // False positive: G307: Deferring unsafe method "Close" on type "*os.File" (gosec)
 		clErr := f.Close()
 		if clErr != nil && err == nil {
 			err = clErr
@@ -459,7 +458,7 @@ type testingT struct {
 }
 
 func (t *testingT) Errorf(format string, args ...interface{}) {
-	t.Err = fmt.Errorf(format, args...) // nolint:goerr113
+	t.Err = fmt.Errorf(format, args...) //nolint:goerr113
 }
 
 type tableQuery struct {
