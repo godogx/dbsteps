@@ -198,7 +198,7 @@ func TestManager_RegisterContext_fail(t *testing.T) {
 
 	mock.ExpectQuery(`SELECT COUNT\(1\) AS c FROM my_table`).WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(2))
 
-	createdAt := time.Date(2020, 1, 1, 1, 1, 1, 1, time.UTC)
+	createdAt := time.Date(2020, 1, 1, 1, 1, 1, 0, time.UTC)
 
 	mock.ExpectQuery(`SELECT id, created_at, deleted_at, foo, bar FROM my_table LIMIT 50`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "deleted_at", "foo", "bar"}).
@@ -223,9 +223,9 @@ func TestManager_RegisterContext_fail(t *testing.T) {
 	status := suite.Run()
 
 	assert.Contains(t, buf.String(), `
-| id | foo    | bar     | created_at                     | deleted_at |
-| 1  | my-foo | bar-1   | 2020-01-01T01:01:01.000000001Z | NULL       |
-| 2  | my-foo | bar-122 | 2020-01-01T01:01:01.000000001Z | NULL       |
+| id | foo    | bar     | created_at           | deleted_at |
+| 1  | my-foo | bar-1   | 2020-01-01T01:01:01Z | NULL       |
+| 2  | my-foo | bar-122 | 2020-01-01T01:01:01Z | NULL       |
 `)
 
 	if status == 0 {

@@ -1,4 +1,4 @@
-package dbsteps // nolint:testpackage
+package dbsteps //nolint:testpackage
 
 import (
 	"bytes"
