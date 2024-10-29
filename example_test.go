@@ -48,6 +48,7 @@ func ExampleNewTableMapper() {
 	// Apply JSON decoding to a particular type.
 	tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
 		data := jsonData{}
+
 		err := json.Unmarshal([]byte(s), &data)
 		if err != nil {
 			return nil, err
