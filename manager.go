@@ -146,78 +146,78 @@ func (m *Manager) RegisterSteps(s *godog.ScenarioContext) {
 }
 
 func (m *Manager) registerPrerequisites(s *godog.ScenarioContext) {
-	s.Step(`no rows in table "([^"]*)" of database "([^"]*)"$`,
+	s.Step(`^there are no rows in table "([^"]*)" of database "([^"]*)"$`,
 		m.noRowsInTableOfDatabase)
 
-	s.Step(`no rows in table "([^"]*)"$`,
+	s.Step(`^there are no rows in table "([^"]*)"$`,
 		func(ctx context.Context, tableName string) (context.Context, error) {
 			return m.noRowsInTableOfDatabase(ctx, tableName, Default)
 		})
 
-	s.Step(`these rows are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Step(`^these rows are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
 			return m.theseRowsAreStoredInTableOfDatabase(ctx, tableName, database, Rows(data))
 		})
 
-	s.Step(`rows from this file are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Step(`^rows from this file are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, filePath string) (context.Context, error) {
 			return m.rowsFromThisFileAreStoredInTableOfDatabase(ctx, tableName, database, filePath)
 		})
 
-	s.Step(`these rows are stored in table "([^"]*)"[:]?$`,
+	s.Step(`^these rows are stored in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
 			return m.theseRowsAreStoredInTableOfDatabase(ctx, tableName, Default, Rows(data))
 		})
 
-	s.Step(`rows from this file are stored in table "([^"]*)"[:]?$`,
+	s.Step(`^rows from this file are stored in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, filePath string) (context.Context, error) {
 			return m.rowsFromThisFileAreStoredInTableOfDatabase(ctx, tableName, Default, filePath)
 		})
 }
 
 func (m *Manager) registerAssertions(s *godog.ScenarioContext) {
-	s.Step(`only rows from this file are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Step(`^only rows from this file are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, filePath string) (context.Context, error) {
 			return m.onlyRowsFromThisFileAreAvailableInTableOfDatabase(ctx, tableName, database, filePath)
 		})
 
-	s.Step(`only these rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Step(`^only these rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
 			return m.onlyTheseRowsAreAvailableInTableOfDatabase(ctx, tableName, database, Rows(data))
 		})
 
-	s.Step(`only rows from this file are available in table "([^"]*)"[:]?$`,
+	s.Step(`^only rows from this file are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, filePath string) (context.Context, error) {
 			return m.onlyRowsFromThisFileAreAvailableInTableOfDatabase(ctx, tableName, Default, filePath)
 		})
 
-	s.Step(`only these rows are available in table "([^"]*)"[:]?$`,
+	s.Step(`^only these rows are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
 			return m.onlyTheseRowsAreAvailableInTableOfDatabase(ctx, tableName, Default, Rows(data))
 		})
 
-	s.Step(`no rows are available in table "([^"]*)" of database "([^"]*)"$`,
+	s.Step(`^no rows are available in table "([^"]*)" of database "([^"]*)"$`,
 		m.noRowsAreAvailableInTableOfDatabase)
 
-	s.Step(`no rows are available in table "([^"]*)"$`,
+	s.Step(`^no rows are available in table "([^"]*)"$`,
 		func(ctx context.Context, tableName string) (context.Context, error) {
 			return m.noRowsAreAvailableInTableOfDatabase(ctx, tableName, Default)
 		})
 
-	s.Step(`rows from this file are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Step(`^rows from this file are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		m.rowsFromThisFileAreAvailableInTableOfDatabase)
 
-	s.Step(`these rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Step(`^these rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
 			return m.theseRowsAreAvailableInTableOfDatabase(ctx, tableName, database, Rows(data))
 		})
 
-	s.Step(`rows from this file are available in table "([^"]*)"[:]?$`,
+	s.Step(`^rows from this file are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, filePath string) (context.Context, error) {
 			return m.rowsFromThisFileAreAvailableInTableOfDatabase(ctx, tableName, Default, filePath)
 		})
 
-	s.Step(`these rows are available in table "([^"]*)"[:]?$`,
+	s.Step(`^these rows are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
 			return m.theseRowsAreAvailableInTableOfDatabase(ctx, tableName, Default, Rows(data))
 		})
@@ -253,7 +253,7 @@ type Instance struct {
 	// Example: `"my_table": new(MyEntityRow)`
 	Tables map[string]interface{}
 	// PostNoRowsStatements is a map of SQL statement list per table name.
-	// They are executed after `no rows in table` step.
+	// They are executed after `there are no rows in table` step.
 	// Example: `"my_table": []string{"ALTER SEQUENCE my_table_id_seq RESTART"}`.
 	PostCleanup map[string][]string
 
@@ -410,7 +410,6 @@ func (m *Manager) theseRowsAreStoredInTableOfDatabase(ctx context.Context, table
 
 	// Inserting rows.
 	_, err = storage.Exec(ctx, stmt)
-
 	if err != nil {
 		query, args, toSQLErr := stmt.ToSql()
 		if toSQLErr != nil {
@@ -484,7 +483,7 @@ func (t *tableQuery) exposeContents(err error) error {
 
 	table, queryErr := t.queryExistingRows(t.storage, colNames, qb)
 	if queryErr != nil {
-		err = fmt.Errorf("%w, failed to query existing rows: %v", err, queryErr)
+		err = fmt.Errorf("%w, failed to query existing rows: %s", err, queryErr.Error())
 	} else {
 		err = fmt.Errorf("%w, rows available:\n%v", err, table)
 	}
