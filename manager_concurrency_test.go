@@ -1,7 +1,6 @@
 package dbsteps //nolint:testpackage
 
 import (
-	"bytes"
 	"context"
 	"database/sql/driver"
 	"fmt"
@@ -59,7 +58,7 @@ func TestNewManager_concurrent(t *testing.T) {
 				return nil
 			})
 			s.Step("^I sleep$", func() {
-				time.Sleep(time.Millisecond * time.Duration(rand.Int63n(100)))
+				time.Sleep(time.Millisecond * time.Duration(100+rand.Int63n(100)))
 			})
 		},
 		Options: &godog.Options{
@@ -80,14 +79,12 @@ func TestNewManager_concurrent_blocked(t *testing.T) {
 
 	db1, mock1, err := sqlmock.New()
 	assert.NoError(t, err)
-	db2, mock2, err := sqlmock.New()
-	assert.NoError(t, err)
 	db3, mock3, err := sqlmock.New()
 	assert.NoError(t, err)
 
 	mock1.ExpectExec(`DELETE FROM t1`).
 		WillReturnResult(driver.ResultNoRows)
-	mock2.ExpectExec(`DELETE FROM t2`).
+	mock1.ExpectExec(`DELETE FROM t1`).
 		WillReturnResult(driver.ResultNoRows)
 	mock3.ExpectExec(`DELETE FROM t3`).
 		WillReturnResult(driver.ResultNoRows)
@@ -97,17 +94,11 @@ func TestNewManager_concurrent_blocked(t *testing.T) {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db1, "sqlmock")),
 			Tables:  map[string]interface{}{"t1": nil},
 		},
-		"db2": {
-			Storage: sqluct.NewStorage(sqlx.NewDb(db2, "sqlmock")),
-			Tables:  map[string]interface{}{"t2": nil},
-		},
 		"db3": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db3, "sqlmock")),
 			Tables:  map[string]interface{}{"t3": nil},
 		},
 	}
-
-	out := bytes.Buffer{}
 
 	suite := godog.TestSuite{
 		ScenarioInitializer: func(s *godog.ScenarioContext) {
@@ -119,12 +110,18 @@ func TestNewManager_concurrent_blocked(t *testing.T) {
 
 				return nil
 			})
+			s.Step(`^I should be blocked for "([^"]*)"$`, func(ctx context.Context, key string) error {
+				if !dbm.lock.IsLocked(ctx, key) {
+					return fmt.Errorf("%s is not locked", key)
+				}
+
+				return nil
+			})
 			s.Step("^I sleep$", func() {
-				time.Sleep(time.Millisecond * time.Duration(rand.Int63n(100)))
+				time.Sleep(time.Millisecond * time.Duration(100+rand.Int63n(100)))
 			})
 		},
 		Options: &godog.Options{
-			Output:      &out,
 			Format:      "pretty",
 			Strict:      true,
 			Paths:       []string{"_testdata/DatabaseConcurrentBlocked.feature"},
@@ -132,9 +129,7 @@ func TestNewManager_concurrent_blocked(t *testing.T) {
 		},
 	}
 
-	if suite.Run() != 1 {
+	if suite.Run() != 0 {
 		t.Fatal("test failed")
 	}
-
-	assert.Contains(t, out.String(), "db1::t1 is locked")
 }
