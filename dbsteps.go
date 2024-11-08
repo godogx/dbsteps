@@ -146,80 +146,86 @@ func (m *Manager) RegisterSteps(s *godog.ScenarioContext) {
 }
 
 func (m *Manager) registerPrerequisites(s *godog.ScenarioContext) {
-	s.Step(`^there are no rows in table "([^"]*)" of database "([^"]*)"$`,
-		m.noRowsInTableOfDatabase)
+	s.Given(`^there are no rows in table "([^"]*)" of database "([^"]*)"$`,
+		func(ctx context.Context, tableName, dbName string) (context.Context, error) {
+			return m.givenNoRowsInTableOfDatabase(ctx, tableName, dbName)
+		})
 
-	s.Step(`^there are no rows in table "([^"]*)"$`,
+	s.Given(`^there are no rows in table "([^"]*)"$`,
 		func(ctx context.Context, tableName string) (context.Context, error) {
-			return m.noRowsInTableOfDatabase(ctx, tableName, Default)
+			return m.givenNoRowsInTableOfDatabase(ctx, tableName, Default)
 		})
 
-	s.Step(`^these rows are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Given(`^these rows are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
-			return m.theseRowsAreStoredInTableOfDatabase(ctx, tableName, database, Rows(data))
+			return m.givenTheseRowsAreStoredInTableOfDatabase(ctx, tableName, database, Rows(data))
 		})
 
-	s.Step(`^rows from this file are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Given(`^rows from this file are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, filePath string) (context.Context, error) {
-			return m.rowsFromThisFileAreStoredInTableOfDatabase(ctx, tableName, database, filePath)
+			return m.givenRowsFromThisFileAreStoredInTableOfDatabase(ctx, tableName, database, filePath)
 		})
 
-	s.Step(`^these rows are stored in table "([^"]*)"[:]?$`,
+	s.Given(`^these rows are stored in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
-			return m.theseRowsAreStoredInTableOfDatabase(ctx, tableName, Default, Rows(data))
+			return m.givenTheseRowsAreStoredInTableOfDatabase(ctx, tableName, Default, Rows(data))
 		})
 
-	s.Step(`^rows from this file are stored in table "([^"]*)"[:]?$`,
+	s.Given(`^rows from this file are stored in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, filePath string) (context.Context, error) {
-			return m.rowsFromThisFileAreStoredInTableOfDatabase(ctx, tableName, Default, filePath)
+			return m.givenRowsFromThisFileAreStoredInTableOfDatabase(ctx, tableName, Default, filePath)
 		})
 }
 
 func (m *Manager) registerAssertions(s *godog.ScenarioContext) {
-	s.Step(`^only rows from this file are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Then(`^only rows from this file are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, filePath string) (context.Context, error) {
-			return m.onlyRowsFromThisFileAreAvailableInTableOfDatabase(ctx, tableName, database, filePath)
+			return m.assertRowsFromFile(ctx, tableName, database, filePath, true)
 		})
 
-	s.Step(`^only these rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+	s.Then(`^only these rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
-			return m.onlyTheseRowsAreAvailableInTableOfDatabase(ctx, tableName, database, Rows(data))
+			return m.assertRows(ctx, tableName, database, Rows(data), true)
 		})
 
-	s.Step(`^only rows from this file are available in table "([^"]*)"[:]?$`,
+	s.Then(`^only rows from this file are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, filePath string) (context.Context, error) {
-			return m.onlyRowsFromThisFileAreAvailableInTableOfDatabase(ctx, tableName, Default, filePath)
+			return m.assertRowsFromFile(ctx, tableName, Default, filePath, true)
 		})
 
-	s.Step(`^only these rows are available in table "([^"]*)"[:]?$`,
+	s.Then(`^only these rows are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
-			return m.onlyTheseRowsAreAvailableInTableOfDatabase(ctx, tableName, Default, Rows(data))
+			return m.assertRows(ctx, tableName, Default, Rows(data), true)
 		})
 
-	s.Step(`^no rows are available in table "([^"]*)" of database "([^"]*)"$`,
-		m.noRowsAreAvailableInTableOfDatabase)
+	s.Then(`^no rows are available in table "([^"]*)" of database "([^"]*)"$`,
+		func(ctx context.Context, tableName, dbName string) (context.Context, error) {
+			return m.assertRows(ctx, tableName, dbName, nil, true)
+		})
 
-	s.Step(`^no rows are available in table "([^"]*)"$`,
+	s.Then(`^no rows are available in table "([^"]*)"$`,
 		func(ctx context.Context, tableName string) (context.Context, error) {
-			return m.noRowsAreAvailableInTableOfDatabase(ctx, tableName, Default)
+			return m.assertRows(ctx, tableName, Default, nil, true)
 		})
 
-	s.Step(`^rows from this file are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
-		m.rowsFromThisFileAreAvailableInTableOfDatabase)
+	s.Then(`^rows from this file are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+		func(ctx context.Context, tableName, dbName string, filePath string) (context.Context, error) {
+			return m.assertRowsFromFile(ctx, tableName, dbName, filePath, false)
+		})
 
 	s.Step(`^these rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
-			return m.theseRowsAreAvailableInTableOfDatabase(ctx, tableName, database, Rows(data))
+			return m.assertRows(ctx, tableName, database, Rows(data), false)
 		})
 
-	s.Step(`^rows from this file are available in table "([^"]*)"[:]?$`,
+	s.Then(`^rows from this file are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, filePath string) (context.Context, error) {
-			return m.rowsFromThisFileAreAvailableInTableOfDatabase(ctx, tableName, Default, filePath)
+			return m.assertRowsFromFile(ctx, tableName, Default, filePath, false)
 		})
 
-	s.Step(`^these rows are available in table "([^"]*)"[:]?$`,
+	s.Then(`^these rows are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
-			return m.theseRowsAreAvailableInTableOfDatabase(ctx, tableName, Default, Rows(data))
+			return m.assertRows(ctx, tableName, Default, Rows(data), false)
 		})
 }
 
@@ -305,7 +311,7 @@ func (m *Manager) instance(ctx context.Context, tableName, dbName string) (Insta
 	return instance, row, ctx, nil
 }
 
-func (m *Manager) noRowsInTableOfDatabase(ctx context.Context, tableName, dbName string) (context.Context, error) {
+func (m *Manager) givenNoRowsInTableOfDatabase(ctx context.Context, tableName, dbName string) (context.Context, error) {
 	instance, _, ctx, err := m.instance(ctx, tableName, dbName)
 	if err != nil {
 		return ctx, err
@@ -382,16 +388,16 @@ func Rows(data *godog.Table) [][]string {
 	return d
 }
 
-func (m *Manager) rowsFromThisFileAreStoredInTableOfDatabase(ctx context.Context, tableName, dbName string, filePath string) (context.Context, error) {
+func (m *Manager) givenRowsFromThisFileAreStoredInTableOfDatabase(ctx context.Context, tableName, dbName string, filePath string) (context.Context, error) {
 	data, err := loadTableFromFile(filePath)
 	if err != nil {
 		return ctx, fmt.Errorf("failed to load rows from file: %w", err)
 	}
 
-	return m.theseRowsAreStoredInTableOfDatabase(ctx, tableName, dbName, data)
+	return m.givenTheseRowsAreStoredInTableOfDatabase(ctx, tableName, dbName, data)
 }
 
-func (m *Manager) theseRowsAreStoredInTableOfDatabase(ctx context.Context, tableName, dbName string, data [][]string) (context.Context, error) {
+func (m *Manager) givenTheseRowsAreStoredInTableOfDatabase(ctx context.Context, tableName, dbName string, data [][]string) (context.Context, error) {
 	instance, row, ctx, err := m.instance(ctx, tableName, dbName)
 	if err != nil {
 		return ctx, err
@@ -420,36 +426,6 @@ func (m *Manager) theseRowsAreStoredInTableOfDatabase(ctx context.Context, table
 	}
 
 	return ctx, err
-}
-
-func (m *Manager) onlyRowsFromThisFileAreAvailableInTableOfDatabase(ctx context.Context, tableName, dbName string, filePath string) (context.Context, error) {
-	data, err := loadTableFromFile(filePath)
-	if err != nil {
-		return ctx, fmt.Errorf("failed to load rows from file: %w", err)
-	}
-
-	return m.assertRows(ctx, tableName, dbName, data, true)
-}
-
-func (m *Manager) onlyTheseRowsAreAvailableInTableOfDatabase(ctx context.Context, tableName, dbName string, data [][]string) (context.Context, error) {
-	return m.assertRows(ctx, tableName, dbName, data, true)
-}
-
-func (m *Manager) noRowsAreAvailableInTableOfDatabase(ctx context.Context, tableName, dbName string) (context.Context, error) {
-	return m.assertRows(ctx, tableName, dbName, nil, true)
-}
-
-func (m *Manager) rowsFromThisFileAreAvailableInTableOfDatabase(ctx context.Context, tableName, dbName string, filePath string) (context.Context, error) {
-	data, err := loadTableFromFile(filePath)
-	if err != nil {
-		return ctx, fmt.Errorf("failed to load rows from file: %w", err)
-	}
-
-	return m.assertRows(ctx, tableName, dbName, data, false)
-}
-
-func (m *Manager) theseRowsAreAvailableInTableOfDatabase(ctx context.Context, tableName, dbName string, data [][]string) (context.Context, error) {
-	return m.assertRows(ctx, tableName, dbName, data, false)
 }
 
 type testingT struct {
@@ -599,7 +575,7 @@ func combine(keys []string, vals []interface{}) map[string]interface{} {
 func (t *tableQuery) skipDecode(column, value string) bool {
 	// Databases do not provide JSON equality conditions in general,
 	// so if value looks like a non-scalar JSON it is removed from WHERE condition and checked for equality
-	// using Go values during post processing.
+	// using Go values during post-processing.
 	if len(value) > 0 && (value[0] == '{' || value[0] == '[') && json.Valid([]byte(value)) {
 		t.postCheck = append(t.postCheck, column)
 		t.skipWhereCols = append(t.skipWhereCols, column)
@@ -699,6 +675,15 @@ func (m *Manager) assertRows(ctx context.Context, tableName, dbName string, data
 	}
 
 	return ctx, err
+}
+
+func (m *Manager) assertRowsFromFile(ctx context.Context, tableName, dbName string, filePath string, exhaustiveList bool) (context.Context, error) {
+	data, err := loadTableFromFile(filePath)
+	if err != nil {
+		return ctx, fmt.Errorf("failed to load rows from file: %w", err)
+	}
+
+	return m.assertRows(ctx, tableName, dbName, data, exhaustiveList)
 }
 
 func (t *tableQuery) doPostCheck(colNames []string, postCheck []string, argsExp, argsRcv map[string]interface{}, rawValues []string) error {
