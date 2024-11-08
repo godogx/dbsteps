@@ -8,7 +8,7 @@ require (
 	github.com/bool64/dev v0.2.36
 	github.com/bool64/shared v0.1.5
 	github.com/bool64/sqluct v0.2.3
-	github.com/cucumber/godog v0.14.1
+	github.com/cucumber/godog v0.15.0
 	github.com/godogx/resource v0.1.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/stretchr/testify v1.8.2
