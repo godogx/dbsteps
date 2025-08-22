@@ -1,9 +1,16 @@
+# See https://golangci-lint.run/docs/linters/configuration/
 version: "2"
 run:
   tests: true
 linters:
   default: all
   disable:
+    - embeddedstructfieldcheck
+    - noinlineerr
+    - wsl_v5
+    - funcorder
+    - copyloopvar
+    - gosec
     - depguard
     - dupword
     - errname
@@ -11,13 +18,14 @@ linters:
     - forbidigo
     - forcetypeassert
     - gochecknoglobals
-    - gosec
+    - intrange
     - ireturn
     - lll
     - mnd
     - nilnil
     - nonamedreturns
     - paralleltest
+    - recvcheck
     - tagalign
     - tagliatelle
     - testableexamples

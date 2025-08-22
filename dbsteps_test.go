@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 	"testing"
 	"time"
 
@@ -35,6 +36,26 @@ func mustParseTime(value string) time.Time {
 	return t
 }
 
+func TestMap(t *testing.T) {
+	m := map[string]interface{}{}
+	m["foo"] = 1
+	m["bar"] = true
+
+	one := m
+	two := m
+	tri := map[string]interface{}{}
+
+	for k, v := range m {
+		tri[k] = v
+	}
+
+	delete(one, "foo")
+
+	fmt.Println(m)
+	fmt.Println(two)
+	fmt.Println(tri)
+}
+
 func TestManager_RegisterContext(t *testing.T) {
 	type RowKey struct {
 		Foo *string        `db:"foo"`
@@ -59,6 +80,125 @@ func TestManager_RegisterContext(t *testing.T) {
 				"my_table":         new(row),
 				"my_another_table": new(row),
 			},
+		},
+	}
+
+	//    Given there are no rows in table "my_table" of database "my_db"
+	mock.ExpectExec(`DELETE FROM my_table`).
+		WillReturnResult(driver.ResultNoRows)
+
+	//    And rows from this file are stored in table "my_table" of database "my_db"
+	//    """
+	//    _testdata/rows.csv
+	//    """
+	mock.ExpectExec(`INSERT INTO my_table \(id,created_at,deleted_at,foo,bar\) VALUES .+`).
+		WithArgs(
+			1, mustParseTime("2021-01-01T00:00:00Z"), nil, "foo-1", "abc",
+			2, mustParseTime("2021-01-02T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z"), "foo-1", "def",
+			3, mustParseTime("2021-01-03T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z"), "foo-2", "hij",
+		).
+		WillReturnResult(driver.ResultNoRows)
+
+	//    And these rows are stored in table "my_table" of database "my_db":
+	//      | id | foo   | bar | created_at           | deleted_at           |
+	//      | 1  | foo-1 | abc   | 2021-01-01T00:00:00Z | NULL                 |
+	mock.ExpectExec(`INSERT INTO my_table \(id,created_at,deleted_at,foo,bar\) VALUES .+`).
+		WithArgs(
+			1, mustParseTime("2021-01-01T00:00:00Z"), nil, "foo-1", "abc",
+		).
+		WillReturnResult(driver.ResultNoRows)
+
+	//    Then only these rows are available in table "my_table" of database "my_db":
+	//      | id | foo   | bar | created_at           | deleted_at           |
+	//      | 1  | foo-1 | abc   | 2021-01-01T00:00:00Z | NULL                 |
+	//      | 2  | foo-1 | def      | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
+	//      | 3  | foo-2 | hij      | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
+	mock.ExpectQuery(`SELECT COUNT\(1\) AS c FROM my_table`).WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(3))
+
+	mock.ExpectQuery(`SELECT .+ FROM my_table WHERE bar = \$1 AND created_at = \$2 AND deleted_at IS NULL`).
+		WithArgs(
+			"abc", mustParseTime("2021-01-01T00:00:00Z"),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "foo", "bar", "created_at", "deleted_at"}).
+			AddRow(1, "foo-1", "abc", mustParseTime("2021-01-01T00:00:00Z"), nil))
+
+	mock.ExpectQuery(`SELECT .+ FROM my_table WHERE foo = \$1 AND bar = \$2 AND created_at = \$3 AND deleted_at = \$4`).
+		WithArgs(
+			"foo-1", "def", mustParseTime("2021-01-02T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z"),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "foo", "bar", "created_at", "deleted_at"}).
+			AddRow(2, "foo-1", "def", mustParseTime("2021-01-02T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z")))
+
+	mock.ExpectQuery(`SELECT .+ FROM my_table WHERE foo = \$1 AND bar = \$2 AND created_at = \$3 AND deleted_at = \$4`).
+		WithArgs(
+			"foo-2", "hij", mustParseTime("2021-01-03T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z"),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "foo", "bar", "created_at", "deleted_at"}).
+			AddRow(3, "foo-2", "hij", mustParseTime("2021-01-03T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z")))
+
+	// Assertion with interpolated variables.
+	//    Then only these rows are available in table "my_table" of database "my_db":
+	//      | id    | foo   | bar | created_at           | deleted_at           |
+	//      | <id1> | foo-1 | abc   | 2021-01-01T00:00:00Z | NULL                 |
+	//      | <id2> | foo-1 | def      | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
+	//      | <id3> | foo-2 | hij      | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
+	mock.ExpectQuery(`SELECT COUNT\(1\) AS c FROM my_table`).WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(3))
+
+	mock.ExpectQuery(`SELECT .+ FROM my_table WHERE id = \$1 AND foo = \$2 AND bar = \$3 AND created_at = \$4 AND deleted_at IS NULL`).
+		WithArgs(
+			1, "foo-1", "abc", mustParseTime("2021-01-01T00:00:00Z"),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "foo", "bar", "created_at", "deleted_at"}).
+			AddRow(1, "foo-1", "abc", mustParseTime("2021-01-01T00:00:00Z"), nil))
+
+	mock.ExpectQuery(`SELECT .+ FROM my_table WHERE id = \$1 AND foo = \$2 AND bar = \$3 AND created_at = \$4 AND deleted_at = \$5`).
+		WithArgs(
+			2, "foo-1", "def", mustParseTime("2021-01-02T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z"),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "foo", "bar", "created_at", "deleted_at"}).
+			AddRow(2, "foo-1", "def", mustParseTime("2021-01-02T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z")))
+
+	mock.ExpectQuery(`SELECT .+ FROM my_table WHERE id = \$1 AND foo = \$2 AND bar = \$3 AND created_at = \$4 AND deleted_at = \$5`).
+		WithArgs(
+			3, "foo-2", "hij", mustParseTime("2021-01-03T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z"),
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "foo", "bar", "created_at", "deleted_at"}).
+			AddRow(3, "foo-2", "hij", mustParseTime("2021-01-03T00:00:00Z"), mustParseTime("2021-01-03T00:00:00Z")))
+
+	//    And no rows are available in table "my_another_table" of database "my_db"
+	mock.ExpectQuery(`SELECT COUNT\(1\) AS c FROM my_another_table`).WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(0))
+
+	buf := bytes.NewBuffer(nil)
+
+	suite := godog.TestSuite{
+		Name:                 "DatabaseContext",
+		TestSuiteInitializer: nil,
+		ScenarioInitializer: func(s *godog.ScenarioContext) {
+			dbm.RegisterSteps(s)
+		},
+		Options: &godog.Options{
+			Format:    "pretty",
+			Output:    buf,
+			Paths:     []string{"_testdata/Database.feature"},
+			Strict:    true,
+			Randomize: time.Now().UTC().UnixNano(),
+		},
+	}
+	status := suite.Run()
+
+	if status != 0 {
+		t.Fatal(buf.String())
+	}
+}
+
+func TestManager_RegisterContext_untyped_row(t *testing.T) {
+	dbm := dbsteps.NewManager()
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+
+	dbm.Instances = map[string]dbsteps.Instance{
+		"my_db": {
+			Storage: sqluct.NewStorage(sqlx.NewDb(db, "sqlmock")),
 		},
 	}
 

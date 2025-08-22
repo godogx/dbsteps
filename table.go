@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/godogx/vars"
 	"github.com/swaggest/form/v5"
 )
 
@@ -116,15 +117,27 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 
 	colNames := c.Data[0]
 
-	itemType, err := itemType(c.Item)
-	if err != nil {
-		return err
+	var (
+		it      reflect.Type
+		err     error
+		itemBuf reflect.Value
+	)
+
+	if c.Item != nil {
+		it, err = itemType(c.Item)
+		if err != nil {
+			return err
+		}
 	}
 
 	values := make(map[string][]string, len(colNames))
+	rowMap := make(map[string]interface{})
 
 	for rowIndex, row := range c.Data[1:] {
-		itemBuf := reflect.New(itemType)
+		if c.Item != nil {
+			itemBuf = reflect.New(it)
+		}
+
 		raw := make([]string, 0, len(colNames))
 
 		for i, cell := range row {
@@ -141,24 +154,38 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 			}
 
 			if cell != null {
+				rowMap[colNames[i]] = vars.Infer(cell)
 				values[colNames[i]] = []string{cell}
 			} else {
+				rowMap[colNames[i]] = nil
+
 				delete(values, colNames[i])
 			}
 		}
 
-		val := itemBuf.Interface()
-
-		err := m.Decoder.Decode(val, values)
-		if err != nil {
-			return err
-		}
-
-		err = c.ReceiveRow(rowIndex, itemBuf.Interface(), colNames, raw)
-		if err != nil {
-			return err
+		if c.Item != nil {
+			err = c.ReceiveRow(rowIndex, m.decode(itemBuf, values), colNames, raw)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = c.ReceiveRow(rowIndex, rowMap, colNames, raw)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
+}
+
+func (m *TableMapper) decode(itemBuf reflect.Value, values map[string][]string) interface{} {
+	val := itemBuf.Interface()
+
+	err := m.Decoder.Decode(val, values)
+	if err != nil {
+		return err
+	}
+
+	return itemBuf.Interface()
 }
