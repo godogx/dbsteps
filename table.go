@@ -107,7 +107,7 @@ func itemType(v interface{}) (reflect.Type, error) {
 // IterateTable walks gherkin table calling row receiver with mapped row.
 // If receiver returns error iteration stops and error is propagated.
 func (m *TableMapper) IterateTable(c IterateConfig) error {
-	if m.Decoder == nil {
+	if m.Decoder == nil && c.Item != nil {
 		m.Decoder = form.NewDecoder()
 	}
 
@@ -115,12 +115,13 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 		return errRowRequired
 	}
 
-	colNames := c.Data[0]
-
 	var (
-		it      reflect.Type
-		err     error
-		itemBuf reflect.Value
+		it       reflect.Type
+		err      error
+		itemBuf  reflect.Value
+		colNames = c.Data[0]
+		values   = make(map[string][]string, len(colNames))
+		rowMap   = make(map[string]interface{})
 	)
 
 	if c.Item != nil {
@@ -129,9 +130,6 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 			return err
 		}
 	}
-
-	values := make(map[string][]string, len(colNames))
-	rowMap := make(map[string]interface{})
 
 	for rowIndex, row := range c.Data[1:] {
 		if c.Item != nil {
@@ -163,23 +161,19 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 			}
 		}
 
-		if c.Item != nil {
-			err = c.ReceiveRow(rowIndex, m.decode(itemBuf, values), colNames, raw)
-			if err != nil {
-				return err
-			}
-		} else {
-			err = c.ReceiveRow(rowIndex, rowMap, colNames, raw)
-			if err != nil {
-				return err
-			}
+		if err = c.ReceiveRow(rowIndex, m.decode(itemBuf, values, rowMap), colNames, raw); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-func (m *TableMapper) decode(itemBuf reflect.Value, values map[string][]string) interface{} {
+func (m *TableMapper) decode(itemBuf reflect.Value, values map[string][]string, rowMap map[string]interface{}) interface{} {
+	if !itemBuf.IsValid() {
+		return rowMap
+	}
+
 	val := itemBuf.Interface()
 
 	err := m.Decoder.Decode(val, values)

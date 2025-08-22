@@ -435,28 +435,7 @@ func (m *Manager) givenTheseRowsAreStoredInTableOfDatabase(ctx context.Context, 
 
 		stmt = storage.InsertStmt(tableName, rows, sqluct.Columns(colNames...))
 	} else {
-		stmt = storage.InsertStmt(tableName, row)
-		stmt = stmt.Columns(colNames...)
-
-		for i, r := range data {
-			if i == 0 {
-				continue
-			}
-
-			vals := make([]interface{}, 0, len(r))
-
-			for _, v := range r {
-				if v == null {
-					vals = append(vals, nil)
-
-					continue
-				}
-
-				vals = append(vals, vars.Infer(v))
-			}
-
-			stmt = stmt.Values(vals...)
-		}
+		stmt = m.prepareInsert(storage.InsertStmt(tableName, row).Columns(colNames...), data)
 	}
 
 	// Inserting rows.
@@ -471,6 +450,30 @@ func (m *Manager) givenTheseRowsAreStoredInTableOfDatabase(ctx context.Context, 
 	}
 
 	return ctx, err
+}
+
+func (m *Manager) prepareInsert(stmt squirrel.InsertBuilder, data [][]string) squirrel.InsertBuilder {
+	for i, r := range data {
+		if i == 0 {
+			continue
+		}
+
+		vals := make([]interface{}, 0, len(r))
+
+		for _, v := range r {
+			if v == null {
+				vals = append(vals, nil)
+
+				continue
+			}
+
+			vals = append(vals, vars.Infer(v))
+		}
+
+		stmt = stmt.Values(vals...)
+	}
+
+	return stmt
 }
 
 type testingT struct {
