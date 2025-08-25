@@ -340,7 +340,7 @@ func TestManager_RegisterContext_fail(t *testing.T) {
 
 	createdAt := time.Date(2020, 1, 1, 1, 1, 1, 0, time.UTC)
 
-	mock.ExpectQuery(`SELECT id, created_at, deleted_at, foo, bar FROM my_table LIMIT 50`).
+	mock.ExpectQuery(`SELECT \* FROM my_table LIMIT 50`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "deleted_at", "foo", "bar"}).
 			AddRow(1, createdAt, nil, "my-foo", "bar-1").
 			AddRow(2, createdAt, nil, "my-foo", "bar-122"))

@@ -497,7 +497,7 @@ type tableQuery struct {
 }
 
 func (t *tableQuery) exposeContents(err error) error {
-	qb := t.storage.SelectStmt(t.table, t.row).Limit(50)
+	qb := t.storage.SelectStmt(t.table, nil).Columns("*").Limit(50)
 
 	var colNames []string
 
