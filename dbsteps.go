@@ -70,7 +70,7 @@
 //
 // If a column has NULL value, it is excluded from WHERE condition.
 //
-// Column can contain variable (any unique string starting with $ or other prefix configured with Manager.VarPrefix).
+// Column can contain a variable (any unique string starting with $ or other prefix configured with Manager.VarPrefix).
 // If variable has not yet been populated, it is excluded from WHERE condition and populated with value received
 // from database. When this variable is used in next steps, it replaces the value of column with value of variable.
 //
@@ -116,6 +116,7 @@ package dbsteps
 
 import (
 	"context"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -150,11 +151,23 @@ func (m *Manager) RegisterSteps(s *godog.ScenarioContext) {
 }
 
 func (m *Manager) registerPrerequisites(s *godog.ScenarioContext) {
+	s.Given(`^all rows are deleted in table "([^"]*)" of database "([^"]*)"$`,
+		func(ctx context.Context, tableName, dbName string) (context.Context, error) {
+			return m.givenNoRowsInTableOfDatabase(ctx, tableName, dbName)
+		})
+
+	// Deprecated
 	s.Given(`^there are no rows in table "([^"]*)" of database "([^"]*)"$`,
 		func(ctx context.Context, tableName, dbName string) (context.Context, error) {
 			return m.givenNoRowsInTableOfDatabase(ctx, tableName, dbName)
 		})
 
+	s.Given(`^all rows are deleted in table "([^"]*)"$`,
+		func(ctx context.Context, tableName string) (context.Context, error) {
+			return m.givenNoRowsInTableOfDatabase(ctx, tableName, Default)
+		})
+
+	// Deprecated
 	s.Given(`^there are no rows in table "([^"]*)"$`,
 		func(ctx context.Context, tableName string) (context.Context, error) {
 			return m.givenNoRowsInTableOfDatabase(ctx, tableName, Default)
@@ -261,14 +274,33 @@ type Manager struct {
 
 // Instance provides database instance.
 type Instance struct {
+	Name string
+
 	Storage *sqluct.Storage
+
 	// Tables is a map of row structures per table name.
 	// Example: `"my_table": new(MyEntityRow)`
 	Tables map[string]interface{}
+
 	// PostNoRowsStatements is a map of SQL statement list per table name.
 	// They are executed after `there are no rows in table` step.
 	// Example: `"my_table": []string{"ALTER SEQUENCE my_table_id_seq RESTART"}`.
 	PostCleanup map[string][]string
+}
+
+func (m *Manager) AddDB(db *sql.DB, options ...func(instance *Instance)) {
+	i := Instance{}
+	i.Storage = sqluct.NewStorage(sqlx.NewDb(db, ""))
+
+	for _, option := range options {
+		option(&i)
+	}
+
+	if i.Name == "" {
+		i.Name = Default
+	}
+
+	m.Instances[i.Name] = i
 }
 
 // DisableLocks disable locks between concurrent scenarios.

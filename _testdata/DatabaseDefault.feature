@@ -1,7 +1,7 @@
 Feature: Database Query
 
   Scenario: Successful Query
-    Given there are no rows in table "my_table"
+    Given all rows are deleted in table "my_table"
 
     And rows from this file are stored in table "my_table"
     """
