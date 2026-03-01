@@ -9,7 +9,7 @@
 //	dbm.Instances = map[string]dbsteps.Instance{
 //		"my_db": {
 //			Storage: storage,
-//			Tables: map[string]interface{}{
+//			Tables: map[string]any{
 //				"my_table":           new(repository.MyRow),
 //				"my_another_table":   new(repository.MyAnotherRow),
 //			},
@@ -23,7 +23,7 @@
 //	tableMapper := dbsteps.NewTableMapper()
 //
 //	// Apply JSON decoding to a particular type.
-//	tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
+//	tableMapper.Decoder.RegisterFunc(func(s string) (any, error) {
 //		m := repository.Meta{}
 //		err := json.Unmarshal([]byte(s), &m)
 //		if err != nil {
@@ -33,7 +33,7 @@
 //	}, repository.Meta{})
 //
 //	// Apply string splitting to github.com/lib/pq.StringArray.
-//	tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
+//	tableMapper.Decoder.RegisterFunc(func(s string) (any, error) {
 //		return pq.StringArray(strings.Split(s, ",")), nil
 //	}, pq.StringArray{})
 //

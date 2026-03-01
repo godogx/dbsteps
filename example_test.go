@@ -1,13 +1,44 @@
 package dbsteps_test
 
 import (
+	"database/sql"
 	"encoding/json"
 
 	"github.com/bool64/sqluct"
+	"github.com/cucumber/godog"
 	"github.com/godogx/dbsteps"
+	"github.com/godogx/vars"
 )
 
 func ExampleNewManager() {
+	var db *sql.DB
+
+	vs := &vars.Steps{}
+
+	// Initialize database manager.
+	dbm := dbsteps.NewManager()
+	dbm.VS = vs // Setup shared vars steps.
+	dbm.AddDB(db)
+
+	suite := godog.TestSuite{
+		Name:                 "DatabaseContext",
+		TestSuiteInitializer: nil,
+		ScenarioInitializer: func(s *godog.ScenarioContext) {
+			dbm.RegisterSteps(s)
+			vs.Register(s)
+		},
+		Options: &godog.Options{
+			Format: "pretty",
+			Paths:  []string{"features"},
+			Strict: true,
+		},
+	}
+	status := suite.Run()
+
+	println(status)
+}
+
+func ExampleNewManager_advanced() {
 	// Set up a storage adapter for your database connection.
 	var storage *sqluct.Storage
 
