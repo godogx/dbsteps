@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/godogx/vars"
 	"github.com/swaggest/form/v5"
 )
 
@@ -17,7 +18,7 @@ type TableMapper struct {
 	Encoder *form.Encoder
 }
 
-func isNil(v interface{}) bool {
+func isNil(v any) bool {
 	if v == nil {
 		return true
 	}
@@ -31,7 +32,7 @@ func isNil(v interface{}) bool {
 }
 
 // Encode converts Go value to string.
-func (m *TableMapper) Encode(v interface{}) (string, error) {
+func (m *TableMapper) Encode(v any) (string, error) {
 	if m.Encoder == nil {
 		m.Encoder = form.NewEncoder()
 	}
@@ -49,7 +50,7 @@ func (m *TableMapper) Encode(v interface{}) (string, error) {
 }
 
 // SliceFromTable creates a slice from gherkin table, item type is used as slice element type.
-func (m *TableMapper) SliceFromTable(data [][]string, item interface{}) (interface{}, error) {
+func (m *TableMapper) SliceFromTable(data [][]string, item any) (any, error) {
 	itemType := reflect.TypeOf(item)
 	if itemType == nil {
 		return nil, errNilItemStruct
@@ -63,7 +64,7 @@ func (m *TableMapper) SliceFromTable(data [][]string, item interface{}) (interfa
 
 	err := m.IterateTable(IterateConfig{
 		Data: data, Item: item,
-		ReceiveRow: func(index int, row interface{}, colNames []string, rawValues []string) error {
+		ReceiveRow: func(index int, row any, colNames []string, rawValues []string) error {
 			result.Index(index).Set(reflect.Indirect(reflect.ValueOf(row)))
 
 			return nil
@@ -80,9 +81,9 @@ func (m *TableMapper) SliceFromTable(data [][]string, item interface{}) (interfa
 type IterateConfig struct {
 	Data       [][]string
 	SkipDecode func(column, value string) bool
-	Item       interface{}
+	Item       any
 	Replaces   map[string]string
-	ReceiveRow func(index int, row interface{}, colNames []string, rawValues []string) error
+	ReceiveRow func(index int, row any, colNames []string, rawValues []string) error
 }
 
 var (
@@ -90,7 +91,7 @@ var (
 	errRowRequired   = errors.New("header and at least one row required in table")
 )
 
-func itemType(v interface{}) (reflect.Type, error) {
+func itemType(v any) (reflect.Type, error) {
 	itemType := reflect.TypeOf(v)
 	if itemType == nil {
 		return nil, errNilItemStruct
@@ -106,7 +107,7 @@ func itemType(v interface{}) (reflect.Type, error) {
 // IterateTable walks gherkin table calling row receiver with mapped row.
 // If receiver returns error iteration stops and error is propagated.
 func (m *TableMapper) IterateTable(c IterateConfig) error {
-	if m.Decoder == nil {
+	if m.Decoder == nil && c.Item != nil {
 		m.Decoder = form.NewDecoder()
 	}
 
@@ -114,17 +115,27 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 		return errRowRequired
 	}
 
-	colNames := c.Data[0]
+	var (
+		it       reflect.Type
+		err      error
+		itemBuf  reflect.Value
+		colNames = c.Data[0]
+		values   = make(map[string][]string, len(colNames))
+		rowMap   = make(map[string]any)
+	)
 
-	itemType, err := itemType(c.Item)
-	if err != nil {
-		return err
+	if c.Item != nil {
+		it, err = itemType(c.Item)
+		if err != nil {
+			return err
+		}
 	}
 
-	values := make(map[string][]string, len(colNames))
-
 	for rowIndex, row := range c.Data[1:] {
-		itemBuf := reflect.New(itemType)
+		if c.Item != nil {
+			itemBuf = reflect.New(it)
+		}
+
 		raw := make([]string, 0, len(colNames))
 
 		for i, cell := range row {
@@ -141,24 +152,34 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 			}
 
 			if cell != null {
+				rowMap[colNames[i]] = vars.Infer(cell)
 				values[colNames[i]] = []string{cell}
 			} else {
+				rowMap[colNames[i]] = nil
+
 				delete(values, colNames[i])
 			}
 		}
 
-		val := itemBuf.Interface()
-
-		err := m.Decoder.Decode(val, values)
-		if err != nil {
-			return err
-		}
-
-		err = c.ReceiveRow(rowIndex, itemBuf.Interface(), colNames, raw)
-		if err != nil {
+		if err = c.ReceiveRow(rowIndex, m.decode(itemBuf, values, rowMap), colNames, raw); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (m *TableMapper) decode(itemBuf reflect.Value, values map[string][]string, rowMap map[string]any) any {
+	if !itemBuf.IsValid() {
+		return rowMap
+	}
+
+	val := itemBuf.Interface()
+
+	err := m.Decoder.Decode(val, values)
+	if err != nil {
+		return err
+	}
+
+	return itemBuf.Interface()
 }

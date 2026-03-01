@@ -64,7 +64,7 @@ tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
     return pq.StringArray(strings.Split(s, ",")), nil
 }, pq.StringArray{})
 
-// Create database manager with custom mapper.
+// Create a database manager with a custom mapper.
 dbm := dbsteps.NewManager()
 dbm.TableMapper = tableMapper
 ```
@@ -74,7 +74,7 @@ dbm.TableMapper = tableMapper
 Delete all rows from table.
 
 ```gherkin
-Given there are no rows in table "my_table" of database "my_db"
+Given all rows are deleted in table "my_table" of database "my_db"
 ```
 
 Populate rows in a database.
@@ -103,10 +103,10 @@ If a column has `NULL` value, it is excluded from `WHERE` condition.
 
 Column can contain variable (any unique string starting with `$` or other prefix configured with `Manager.VarPrefix`).
 If variable has not yet been populated, it is excluded from `WHERE` condition and populated with value received from
-database. When this variable is used in next steps, it replaces the value of column with value of variable.
+database. When this variable is used in the next steps, it replaces the value of the column with the value of the variable.
 
-Variables can help to assert consistency of dynamic data, for example variable can be populated as ID of one entity and
-then checked as foreign key value of another entity. This can be especially helpful in cases of UUIDs.
+Variables can help to assert the consistency of dynamic data, for example, a variable can be populated as ID of one entity and
+then checked as a foreign key value of another entity. This can be especially helpful in cases of UUIDs.
 
 If column value represents JSON array or object it is excluded from `WHERE` condition, value assertion is done by
 comparing Go value mapped from database row field with Go value mapped from gherkin table cell.
@@ -126,8 +126,8 @@ Then rows from this file are available in table "my_table" of database "my_db"
  """
 ```
 
-It is possible to check table contents exhaustively by adding "only" to step statement. Such assertion will also make
-sure that total number of rows in database table matches number of rows in gherkin table.
+It is possible to check table contents exhaustively by adding "only" to a step statement. Such an assertion will also make
+sure that the total number of rows in the database table matches the number of rows in the gherkin table.
 
 ```gherkin
 Then only these rows are available in table "my_table" of database "my_db"
@@ -154,7 +154,7 @@ The name of database instance `of database "my_db"` can be omitted in all steps,
 
 ## Concurrent Usage
 
-Please note, due to centralized nature of database instance, scenarios that work with same tables would conflict.
-In order to avoid conflicts, `dbsteps` locks access to a specific scenario until that scenario is finished.
+Please note, due to the centralized nature of the database instance, scenarios that work with the same tables would conflict.
+To avoid conflicts, `dbsteps` locks access to a specific scenario until that scenario is finished.
 The lock is per table, so if scenarios are operating on different tables, they will not conflict.
 It is safe to use concurrent scenarios.

@@ -70,7 +70,7 @@
 //
 // If a column has NULL value, it is excluded from WHERE condition.
 //
-// Column can contain variable (any unique string starting with $ or other prefix configured with Manager.VarPrefix).
+// Column can contain a variable (any unique string starting with $ or other prefix configured with Manager.VarPrefix).
 // If variable has not yet been populated, it is excluded from WHERE condition and populated with value received
 // from database. When this variable is used in next steps, it replaces the value of column with value of variable.
 //
@@ -116,6 +116,7 @@ package dbsteps
 
 import (
 	"context"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -130,6 +131,7 @@ import (
 	"github.com/bool64/sqluct"
 	"github.com/cucumber/godog"
 	"github.com/godogx/resource"
+	"github.com/godogx/vars"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/swaggest/form/v5"
@@ -140,17 +142,32 @@ const Default = "default"
 
 // RegisterSteps adds database manager context to test suite.
 func (m *Manager) RegisterSteps(s *godog.ScenarioContext) {
-	m.lock.Register(s)
+	if m.lock != nil {
+		m.lock.Register(s)
+	}
+
 	m.registerPrerequisites(s)
 	m.registerAssertions(s)
 }
 
 func (m *Manager) registerPrerequisites(s *godog.ScenarioContext) {
+	s.Given(`^all rows are deleted in table "([^"]*)" of database "([^"]*)"$`,
+		func(ctx context.Context, tableName, dbName string) (context.Context, error) {
+			return m.givenNoRowsInTableOfDatabase(ctx, tableName, dbName)
+		})
+
+	// Deprecated
 	s.Given(`^there are no rows in table "([^"]*)" of database "([^"]*)"$`,
 		func(ctx context.Context, tableName, dbName string) (context.Context, error) {
 			return m.givenNoRowsInTableOfDatabase(ctx, tableName, dbName)
 		})
 
+	s.Given(`^all rows are deleted in table "([^"]*)"$`,
+		func(ctx context.Context, tableName string) (context.Context, error) {
+			return m.givenNoRowsInTableOfDatabase(ctx, tableName, Default)
+		})
+
+	// Deprecated
 	s.Given(`^there are no rows in table "([^"]*)"$`,
 		func(ctx context.Context, tableName string) (context.Context, error) {
 			return m.givenNoRowsInTableOfDatabase(ctx, tableName, Default)
@@ -234,8 +251,8 @@ func NewManager() *Manager {
 	return &Manager{
 		TableMapper: NewTableMapper(),
 		Instances:   make(map[string]Instance),
+		VS:          &vars.Steps{},
 		lock:        resource.NewLock(nil),
-		Vars:        &shared.Vars{},
 	}
 }
 
@@ -248,22 +265,51 @@ type Manager struct {
 	TableMapper *TableMapper
 	Instances   map[string]Instance
 
-	// Vars allow sharing vars with other steps.
+	// Deprecated: use VS.JSONComparer.Vars.
 	Vars *shared.Vars
+
+	// VS allow sharing vars with other steps.
+	VS *vars.Steps
 }
 
 // Instance provides database instance.
 type Instance struct {
+	Name string
+
 	Storage *sqluct.Storage
+
 	// Tables is a map of row structures per table name.
 	// Example: `"my_table": new(MyEntityRow)`
-	Tables map[string]interface{}
+	Tables map[string]any
+
 	// PostNoRowsStatements is a map of SQL statement list per table name.
 	// They are executed after `there are no rows in table` step.
 	// Example: `"my_table": []string{"ALTER SEQUENCE my_table_id_seq RESTART"}`.
 	PostCleanup map[string][]string
+}
 
-	vars *shared.Vars
+// AddDB adds DB instance.
+func (m *Manager) AddDB(db *sql.DB, options ...func(instance *Instance)) {
+	i := Instance{}
+	i.Storage = sqluct.NewStorage(sqlx.NewDb(db, ""))
+
+	for _, option := range options {
+		option(&i)
+	}
+
+	if i.Name == "" {
+		i.Name = Default
+	}
+
+	m.Instances[i.Name] = i
+}
+
+// DisableLocks disable locks between concurrent scenarios.
+// By default, if two concurrent scenarios want to access same DB table, they will need to run sequentially.
+// This is to avoid race conditions in table cleanups and counted assertions ("only these rows are available").
+// If scenarios do not have mutually exclusive conflicting steps, lock can be disabled for better performance.
+func (m *Manager) DisableLocks() {
+	m.lock = nil
 }
 
 // RegisterJSONTypes registers types of provided values to unmarshal as JSON when decoding from string.
@@ -271,10 +317,10 @@ type Instance struct {
 // Arguments should match types of fields in row entities.
 // If field is a pointer, argument should be a pointer: e.g. new(MyType).
 // If field is not a pointer, argument should not be a pointer: e.g. MyType{}.
-func (m *Manager) RegisterJSONTypes(values ...interface{}) {
+func (m *Manager) RegisterJSONTypes(values ...any) {
 	for _, t := range values {
 		rt := reflect.TypeOf(t)
-		m.TableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
+		m.TableMapper.Decoder.RegisterFunc(func(s string) (any, error) {
 			v := reflect.New(rt)
 			err := json.Unmarshal([]byte(s), v.Interface())
 
@@ -283,7 +329,7 @@ func (m *Manager) RegisterJSONTypes(values ...interface{}) {
 	}
 }
 
-func (m *Manager) instance(ctx context.Context, tableName, dbName string) (Instance, interface{}, context.Context, error) {
+func (m *Manager) instance(ctx context.Context, tableName, dbName string) (Instance, any, context.Context, error) {
 	if dbName == "" {
 		dbName = Default
 	}
@@ -293,19 +339,14 @@ func (m *Manager) instance(ctx context.Context, tableName, dbName string) (Insta
 		return Instance{}, nil, ctx, fmt.Errorf("%w %s", errUnknownDatabase, dbName)
 	}
 
-	row, found := instance.Tables[tableName]
-	if !found {
-		return Instance{}, nil, ctx, fmt.Errorf("%w %s in database %s", errUnknownTable, tableName, dbName)
-	}
+	row := instance.Tables[tableName]
 
 	// Locking per table.
-	_, err := m.lock.Acquire(ctx, dbName+"::"+tableName)
-	if err != nil {
-		return Instance{}, nil, ctx, err
-	}
-
-	if m.Vars != nil {
-		ctx, instance.vars = m.Vars.Fork(ctx)
+	if m.lock != nil {
+		_, err := m.lock.Acquire(ctx, dbName+"::"+tableName)
+		if err != nil {
+			return Instance{}, nil, ctx, err
+		}
 	}
 
 	return instance, row, ctx, nil
@@ -398,21 +439,37 @@ func (m *Manager) givenRowsFromThisFileAreStoredInTableOfDatabase(ctx context.Co
 }
 
 func (m *Manager) givenTheseRowsAreStoredInTableOfDatabase(ctx context.Context, tableName, dbName string, data [][]string) (context.Context, error) {
+	if len(data) < 2 {
+		return ctx, errRowRequired
+	}
+
 	instance, row, ctx, err := m.instance(ctx, tableName, dbName)
 	if err != nil {
 		return ctx, err
 	}
 
-	// Reading rows.
-	rows, err := m.TableMapper.SliceFromTable(data, row)
+	var (
+		stmt     squirrel.InsertBuilder
+		storage  = instance.Storage
+		colNames = data[0]
+	)
+
+	ctx, err = m.VS.ReplaceTable(ctx, data)
 	if err != nil {
-		return ctx, fmt.Errorf("failed to map rows table: %w", err)
+		return ctx, err
 	}
 
-	colNames := data[0]
+	// Reading rows.
+	if row != nil {
+		rows, err := m.TableMapper.SliceFromTable(data, row)
+		if err != nil {
+			return ctx, fmt.Errorf("failed to map rows table: %w", err)
+		}
 
-	storage := instance.Storage
-	stmt := storage.InsertStmt(tableName, rows, sqluct.Columns(colNames...))
+		stmt = storage.InsertStmt(tableName, rows, sqluct.Columns(colNames...))
+	} else {
+		stmt = m.prepareInsert(storage.InsertStmt(tableName, row).Columns(colNames...), data)
+	}
 
 	// Inserting rows.
 	_, err = storage.Exec(ctx, stmt)
@@ -428,12 +485,36 @@ func (m *Manager) givenTheseRowsAreStoredInTableOfDatabase(ctx context.Context, 
 	return ctx, err
 }
 
+func (m *Manager) prepareInsert(stmt squirrel.InsertBuilder, data [][]string) squirrel.InsertBuilder {
+	for i, r := range data {
+		if i == 0 {
+			continue
+		}
+
+		vals := make([]any, 0, len(r))
+
+		for _, v := range r {
+			if v == null {
+				vals = append(vals, nil)
+
+				continue
+			}
+
+			vals = append(vals, vars.Infer(v))
+		}
+
+		stmt = stmt.Values(vals...)
+	}
+
+	return stmt
+}
+
 type testingT struct {
 	Err error
 }
 
-func (t *testingT) Errorf(format string, args ...interface{}) {
-	t.Err = fmt.Errorf(format, args...) //nolint:goerr113
+func (t *testingT) Errorf(format string, args ...any) {
+	t.Err = fmt.Errorf(format, args...) //nolint:err113
 }
 
 type tableQuery struct {
@@ -441,15 +522,15 @@ type tableQuery struct {
 	mapper        *TableMapper
 	table         string
 	data          [][]string
-	row           interface{}
+	row           any
 	colNames      []string
 	skipWhereCols []string
 	postCheck     []string
-	vars          *shared.Vars
+	vs            *shared.Vars
 }
 
 func (t *tableQuery) exposeContents(err error) error {
-	qb := t.storage.SelectStmt(t.table, t.row).Limit(50)
+	qb := t.storage.SelectStmt(t.table, nil).Columns("*").Limit(50) //nolint:unqueryvet
 
 	var colNames []string
 
@@ -501,13 +582,15 @@ func (m *Manager) makeTableQuery(ctx context.Context, tableName, dbName string, 
 		return nil, ctx, err
 	}
 
+	ctx, vs := m.VS.Vars(ctx)
+
 	t := tableQuery{
 		storage: instance.Storage,
 		mapper:  m.TableMapper,
 		table:   tableName,
 		data:    data,
 		row:     row,
-		vars:    instance.vars,
+		vs:      vs,
 	}
 
 	if t.data != nil {
@@ -519,12 +602,35 @@ func (m *Manager) makeTableQuery(ctx context.Context, tableName, dbName string, 
 	return &t, ctx, nil
 }
 
-func (t *tableQuery) receiveRow(index int, row interface{}, _ []string, rawValues []string) error {
+func (t *tableQuery) receiveRow(index int, row any, _ []string, rawValues []string) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("row %d: %w", index, err)
+		}
+	}()
+
 	qb := t.storage.QueryBuilder().
 		Select(t.colNames...).
 		From(t.table)
 
-	eq := t.storage.WhereEq(row, sqluct.Columns(t.colNames...))
+	var (
+		argsExp, argsRcv map[string]any
+		eq               squirrel.Eq
+		isMap            = false
+	)
+
+	if m, ok := row.(map[string]any); ok {
+		eq = m
+		argsExp = make(map[string]any, len(m))
+
+		for k, v := range m {
+			argsExp[k] = v
+		}
+
+		isMap = true
+	} else {
+		eq = t.storage.WhereEq(row, sqluct.Columns(t.colNames...))
+	}
 
 	for _, sk := range t.skipWhereCols {
 		delete(eq, sk)
@@ -540,31 +646,84 @@ func (t *tableQuery) receiveRow(index int, row interface{}, _ []string, rawValue
 		qb = qb.Where(squirrel.Eq{col: eq[col]})
 	}
 
-	dest := reflect.New(reflect.TypeOf(row).Elem()).Interface()
-
-	err := t.storage.Select(context.Background(), qb, dest)
-	if err != nil {
-		query, args, qbErr := qb.ToSql()
-		if qbErr != nil {
-			return fmt.Errorf("failed to build query: %w", qbErr)
+	if isMap {
+		argsRcv, err = t.scanMap(qb)
+		if err != nil {
+			return err
 		}
-
-		return fmt.Errorf("failed to query row %d (%+v) with %q %v: %w", index, row, query, args, err)
+	} else {
+		if argsExp, argsRcv, err = t.scanStruct(row, qb); err != nil {
+			return err
+		}
 	}
-
-	colOption := sqluct.Columns(t.colNames...)
 
 	pc := t.postCheck
 	t.postCheck = t.postCheck[:0]
 
-	return t.doPostCheck(t.colNames, pc,
-		combine(t.storage.Mapper.ColumnsValues(reflect.ValueOf(row), colOption)),
-		combine(t.storage.Mapper.ColumnsValues(reflect.ValueOf(dest), colOption)),
-		rawValues)
+	return t.doPostCheck(t.colNames, pc, argsExp, argsRcv, rawValues)
 }
 
-func combine(keys []string, vals []interface{}) map[string]interface{} {
-	m := make(map[string]interface{}, len(keys))
+func (t *tableQuery) scanMap(qb squirrel.SelectBuilder) (
+	argsRcv map[string]any,
+	err error,
+) {
+	rows, err := t.storage.Query(context.Background(), qb)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		clErr := rows.Close()
+		if clErr != nil && err == nil {
+			err = clErr
+		}
+	}()
+
+	found := 0
+
+	for rows.Next() {
+		found++
+
+		argsRcv = make(map[string]any)
+		if err := rows.MapScan(argsRcv); err != nil {
+			return nil, err
+		}
+	}
+
+	if found != 1 {
+		return nil, fmt.Errorf("%w, expected 1, found %d", errInvalidNumberOfRows, found)
+	}
+
+	return argsRcv, nil
+}
+
+func (t *tableQuery) scanStruct(row any, qb squirrel.SelectBuilder) (
+	argsExp map[string]any,
+	argsRcv map[string]any,
+	err error,
+) {
+	dest := reflect.New(reflect.TypeOf(row).Elem()).Interface()
+
+	err = t.storage.Select(context.Background(), qb, dest)
+	if err != nil {
+		query, args, qbErr := qb.ToSql()
+		if qbErr != nil {
+			return nil, nil, fmt.Errorf("build query: %w", qbErr)
+		}
+
+		return nil, nil, fmt.Errorf("run query (%+v) with %q %v: %w", row, query, args, err)
+	}
+
+	colOption := sqluct.Columns(t.colNames...)
+
+	argsExp = combine(t.storage.Mapper.ColumnsValues(reflect.ValueOf(row), colOption))
+	argsRcv = combine(t.storage.Mapper.ColumnsValues(reflect.ValueOf(dest), colOption))
+
+	return argsExp, argsRcv, nil
+}
+
+func combine(keys []string, vals []any) map[string]any {
+	m := make(map[string]any, len(keys))
 	for i, k := range keys {
 		m[k] = vals[i]
 	}
@@ -585,8 +744,8 @@ func (t *tableQuery) skipDecode(column, value string) bool {
 
 	// If value looks like a variable name and does not have an associated value yet,
 	// it is removed from decoding and WHERE condition.
-	if t.vars != nil && t.vars.IsVar(value) {
-		if _, found := t.vars.Get(value); found {
+	if t.vs != nil && t.vs.IsVar(value) {
+		if _, found := t.vs.Get(value); found {
 			return false
 		}
 
@@ -601,14 +760,14 @@ func (t *tableQuery) skipDecode(column, value string) bool {
 func (t *tableQuery) makeReplaces(onSetErr *error) (map[string]string, error) {
 	replaces := make(map[string]string)
 
-	if t.vars == nil {
+	if t.vs == nil {
 		return nil, nil
 	}
 
-	if vars := t.vars.GetAll(); len(vars) > 0 {
-		replaces = make(map[string]string, len(vars))
+	if vs := t.vs.GetAll(); len(vs) > 0 {
+		replaces = make(map[string]string, len(vs))
 
-		for k, v := range vars {
+		for k, v := range vs {
 			s, err := t.mapper.Encode(v)
 			if err != nil {
 				return nil, err
@@ -618,7 +777,7 @@ func (t *tableQuery) makeReplaces(onSetErr *error) (map[string]string, error) {
 		}
 	}
 
-	t.vars.OnSet(func(key string, val interface{}) {
+	t.vs.OnSet(func(key string, val any) {
 		s, err := t.mapper.Encode(val)
 		if err != nil {
 			*onSetErr = err
@@ -686,10 +845,10 @@ func (m *Manager) assertRowsFromFile(ctx context.Context, tableName, dbName stri
 	return m.assertRows(ctx, tableName, dbName, data, exhaustiveList)
 }
 
-func (t *tableQuery) doPostCheck(colNames []string, postCheck []string, argsExp, argsRcv map[string]interface{}, rawValues []string) error {
+func (t *tableQuery) doPostCheck(colNames []string, postCheck []string, argsExp, argsRcv map[string]any, rawValues []string) error {
 	for i, name := range colNames {
-		if t.vars.IsVar(rawValues[i]) {
-			t.vars.Set(rawValues[i], argsRcv[name])
+		if t.vs.IsVar(rawValues[i]) {
+			t.vs.Set(rawValues[i], argsRcv[name])
 		}
 
 		pc := false
@@ -719,7 +878,7 @@ func (t *tableQuery) doPostCheck(colNames []string, postCheck []string, argsExp,
 	return nil
 }
 
-func indirect(v interface{}) interface{} {
+func indirect(v any) any {
 	rv := reflect.ValueOf(v)
 	for rv.Kind() == reflect.Ptr {
 		rv = rv.Elem()
@@ -760,10 +919,10 @@ func NewTableMapper() *TableMapper {
 		Decoder: form.NewDecoder(),
 		Encoder: form.NewEncoder(),
 	}
-	tm.Decoder.RegisterFunc(func(s string) (interface{}, error) {
+	tm.Decoder.RegisterFunc(func(s string) (any, error) {
 		return ParseTime(s)
 	}, time.Time{})
-	tm.Decoder.RegisterFunc(func(s string) (interface{}, error) {
+	tm.Decoder.RegisterFunc(func(s string) (any, error) {
 		t, err := ParseTime(s)
 		if err != nil {
 			return nil, err
@@ -784,9 +943,8 @@ func NewTableMapper() *TableMapper {
 }
 
 var (
-	errWrongType           = errors.New("failed to assert type *interface{}")
+	errWrongType           = errors.New("failed to assert type *any")
 	errInvalidNumberOfRows = errors.New("invalid number of rows in table")
-	errUnknownTable        = errors.New("unknown table")
 	errUnknownDatabase     = errors.New("unknown database")
 )
 
@@ -869,10 +1027,10 @@ func (t *tableQuery) renderRows(colNames []string, res map[string][]string, widt
 }
 
 func (t *tableQuery) formatRow(rows *sqlx.Rows, cols []string, width map[string]int, res map[string][]string) error {
-	// Create a slice of interface{} to represent each column,
+	// Create a slice of any to represent each column,
 	// and a second slice to contain pointers to each item in the columns slice.
-	columns := make([]interface{}, len(cols))
-	columnPointers := make([]interface{}, len(cols))
+	columns := make([]any, len(cols))
+	columnPointers := make([]any, len(cols))
 
 	for i := range columns {
 		columnPointers[i] = &columns[i]
@@ -886,7 +1044,7 @@ func (t *tableQuery) formatRow(rows *sqlx.Rows, cols []string, width map[string]
 	// Create map and retrieve the value for each column from the pointers slice,
 	// storing it in the map with the name of the column as the key.
 	for i, col := range cols {
-		val, ok := columnPointers[i].(*interface{})
+		val, ok := columnPointers[i].(*any)
 		if !ok {
 			return fmt.Errorf("%w of %T", errWrongType, columnPointers[i])
 		}

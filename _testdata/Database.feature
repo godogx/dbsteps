@@ -1,7 +1,7 @@
 Feature: Database Query
 
   Scenario: Successful Query
-    Given there are no rows in table "my_table" of database "my_db"
+    Given all rows are deleted in table "my_table" of database "my_db"
 
     And rows from this file are stored in table "my_table" of database "my_db"
     """
@@ -9,8 +9,8 @@ Feature: Database Query
     """
 
     And these rows are stored in table "my_table" of database "my_db"
-      | id | foo   | bar | created_at           | deleted_at |
-      | 1  | foo-1 | abc | 2021-01-01T00:00:00Z | NULL       |
+      | id | created_at           | deleted_at | foo   | bar |
+      | 1  | 2021-01-01T00:00:00Z | NULL       | foo-1 | abc |
 
     Then only these rows are available in table "my_table" of database "my_db"
       | id   | foo   | bar | created_at           | deleted_at           |

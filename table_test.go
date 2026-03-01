@@ -46,7 +46,7 @@ func TestTableMapper_Encode(t *testing.T) {
 	tm := dbsteps.TableMapper{}
 
 	for _, tc := range []struct {
-		v interface{}
+		v any
 		s string
 	}{
 		{"abc", "abc"},

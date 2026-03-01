@@ -35,15 +35,15 @@ func TestNewManager_concurrent(t *testing.T) {
 	dbm.Instances = map[string]Instance{
 		"db1": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db1, "sqlmock")),
-			Tables:  map[string]interface{}{"t1": nil},
+			Tables:  map[string]any{"t1": nil},
 		},
 		"db2": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db2, "sqlmock")),
-			Tables:  map[string]interface{}{"t2": nil},
+			Tables:  map[string]any{"t2": nil},
 		},
 		"db3": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db3, "sqlmock")),
-			Tables:  map[string]interface{}{"t3": nil},
+			Tables:  map[string]any{"t3": nil},
 		},
 	}
 
@@ -92,11 +92,11 @@ func TestNewManager_concurrent_blocked(t *testing.T) {
 	dbm.Instances = map[string]Instance{
 		"db1": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db1, "sqlmock")),
-			Tables:  map[string]interface{}{"t1": nil},
+			Tables:  map[string]any{"t1": nil},
 		},
 		"db3": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db3, "sqlmock")),
-			Tables:  map[string]interface{}{"t3": nil},
+			Tables:  map[string]any{"t3": nil},
 		},
 	}
 
