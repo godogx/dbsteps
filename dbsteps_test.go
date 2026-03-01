@@ -37,13 +37,13 @@ func mustParseTime(value string) time.Time {
 }
 
 func TestMap(t *testing.T) {
-	m := map[string]interface{}{}
+	m := map[string]any{}
 	m["foo"] = 1
 	m["bar"] = true
 
 	one := m
 	two := m
-	tri := map[string]interface{}{}
+	tri := map[string]any{}
 
 	for k, v := range m {
 		tri[k] = v
@@ -76,7 +76,7 @@ func TestManager_RegisterContext(t *testing.T) {
 	dbm.Instances = map[string]dbsteps.Instance{
 		"my_db": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db, "sqlmock")),
-			Tables: map[string]interface{}{
+			Tables: map[string]any{
 				"my_table":         new(row),
 				"my_another_table": new(row),
 			},
@@ -330,7 +330,7 @@ func TestManager_RegisterContext_fail(t *testing.T) {
 	dbm.Instances = map[string]dbsteps.Instance{
 		"my_db": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db, "sqlmock")),
-			Tables: map[string]interface{}{
+			Tables: map[string]any{
 				"my_table": new(row),
 			},
 		},
@@ -393,7 +393,7 @@ func TestManager_RegisterContext_default(t *testing.T) {
 	dbm.Instances = map[string]dbsteps.Instance{
 		"default": {
 			Storage: sqluct.NewStorage(sqlx.NewDb(db, "sqlmock")),
-			Tables: map[string]interface{}{
+			Tables: map[string]any{
 				"my_table":         new(row),
 				"my_another_table": new(row),
 			},

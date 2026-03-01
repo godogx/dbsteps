@@ -27,7 +27,7 @@ func ExampleNewManager() {
 	dbm := dbsteps.NewManager()
 	dbm.Instances["my_db"] = dbsteps.Instance{
 		Storage: storage,
-		Tables: map[string]interface{}{
+		Tables: map[string]any{
 			"my_table":         new(MyRow),
 			"my_another_table": new(MyAnotherRow),
 		},
@@ -46,7 +46,7 @@ func ExampleNewTableMapper() {
 	tableMapper := dbsteps.NewTableMapper()
 
 	// Apply JSON decoding to a particular type.
-	tableMapper.Decoder.RegisterFunc(func(s string) (interface{}, error) {
+	tableMapper.Decoder.RegisterFunc(func(s string) (any, error) {
 		data := jsonData{}
 
 		err := json.Unmarshal([]byte(s), &data)

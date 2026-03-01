@@ -18,7 +18,7 @@ type TableMapper struct {
 	Encoder *form.Encoder
 }
 
-func isNil(v interface{}) bool {
+func isNil(v any) bool {
 	if v == nil {
 		return true
 	}
@@ -32,7 +32,7 @@ func isNil(v interface{}) bool {
 }
 
 // Encode converts Go value to string.
-func (m *TableMapper) Encode(v interface{}) (string, error) {
+func (m *TableMapper) Encode(v any) (string, error) {
 	if m.Encoder == nil {
 		m.Encoder = form.NewEncoder()
 	}
@@ -50,7 +50,7 @@ func (m *TableMapper) Encode(v interface{}) (string, error) {
 }
 
 // SliceFromTable creates a slice from gherkin table, item type is used as slice element type.
-func (m *TableMapper) SliceFromTable(data [][]string, item interface{}) (interface{}, error) {
+func (m *TableMapper) SliceFromTable(data [][]string, item any) (any, error) {
 	itemType := reflect.TypeOf(item)
 	if itemType == nil {
 		return nil, errNilItemStruct
@@ -64,7 +64,7 @@ func (m *TableMapper) SliceFromTable(data [][]string, item interface{}) (interfa
 
 	err := m.IterateTable(IterateConfig{
 		Data: data, Item: item,
-		ReceiveRow: func(index int, row interface{}, colNames []string, rawValues []string) error {
+		ReceiveRow: func(index int, row any, colNames []string, rawValues []string) error {
 			result.Index(index).Set(reflect.Indirect(reflect.ValueOf(row)))
 
 			return nil
@@ -81,9 +81,9 @@ func (m *TableMapper) SliceFromTable(data [][]string, item interface{}) (interfa
 type IterateConfig struct {
 	Data       [][]string
 	SkipDecode func(column, value string) bool
-	Item       interface{}
+	Item       any
 	Replaces   map[string]string
-	ReceiveRow func(index int, row interface{}, colNames []string, rawValues []string) error
+	ReceiveRow func(index int, row any, colNames []string, rawValues []string) error
 }
 
 var (
@@ -91,7 +91,7 @@ var (
 	errRowRequired   = errors.New("header and at least one row required in table")
 )
 
-func itemType(v interface{}) (reflect.Type, error) {
+func itemType(v any) (reflect.Type, error) {
 	itemType := reflect.TypeOf(v)
 	if itemType == nil {
 		return nil, errNilItemStruct
@@ -121,7 +121,7 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 		itemBuf  reflect.Value
 		colNames = c.Data[0]
 		values   = make(map[string][]string, len(colNames))
-		rowMap   = make(map[string]interface{})
+		rowMap   = make(map[string]any)
 	)
 
 	if c.Item != nil {
@@ -169,7 +169,7 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 	return nil
 }
 
-func (m *TableMapper) decode(itemBuf reflect.Value, values map[string][]string, rowMap map[string]interface{}) interface{} {
+func (m *TableMapper) decode(itemBuf reflect.Value, values map[string][]string, rowMap map[string]any) any {
 	if !itemBuf.IsValid() {
 		return rowMap
 	}
