@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/godogx/vars"
 	"github.com/swaggest/form/v5"
@@ -84,6 +85,9 @@ type IterateConfig struct {
 	Item       any
 	Replaces   map[string]string
 	ReceiveRow func(index int, row any, colNames []string, rawValues []string) error
+
+	// SkipTimeInfer disables time.Time inference from string values.
+	SkipTimeInfer bool
 }
 
 var (
@@ -152,7 +156,15 @@ func (m *TableMapper) IterateTable(c IterateConfig) error {
 			}
 
 			if cell != null {
-				rowMap[colNames[i]] = vars.Infer(cell)
+				val := vars.Infer(cell)
+
+				if c.SkipTimeInfer {
+					if _, ok := val.(time.Time); ok {
+						val = cell
+					}
+				}
+
+				rowMap[colNames[i]] = val
 				values[colNames[i]] = []string{cell}
 			} else {
 				rowMap[colNames[i]] = nil

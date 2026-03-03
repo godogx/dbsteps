@@ -268,6 +268,9 @@ type Manager struct {
 	// DumpAllColumns dumps all columns of existing rows in the table on assertion failure.
 	DumpAllColumns bool
 
+	// SkipTimeInfer disables time.Time inference from string values.
+	SkipTimeInfer bool
+
 	// Deprecated: use VS.JSONComparer.Vars.
 	Vars *shared.Vars
 
@@ -838,11 +841,12 @@ func (m *Manager) assertRows(ctx context.Context, tableName, dbName string, data
 
 	// Iterating rows.
 	err = m.TableMapper.IterateTable(IterateConfig{
-		Data:       data,
-		Item:       t.row,
-		SkipDecode: t.skipDecode,
-		Replaces:   replaces,
-		ReceiveRow: t.receiveRow,
+		Data:          data,
+		Item:          t.row,
+		SkipDecode:    t.skipDecode,
+		Replaces:      replaces,
+		ReceiveRow:    t.receiveRow,
+		SkipTimeInfer: m.SkipTimeInfer,
 	})
 
 	if err == nil && onSetErr != nil {
