@@ -608,15 +608,21 @@ func (m *Manager) makeTableQuery(ctx context.Context, tableName, dbName string, 
 }
 
 func (t *tableQuery) receiveRow(index int, row any, _ []string, rawValues []string) (err error) {
-	defer func() {
-		if err != nil {
-			err = fmt.Errorf("row %d: %w", index, err)
-		}
-	}()
-
 	qb := t.storage.QueryBuilder().
 		Select(t.colNames...).
 		From(t.table)
+
+	defer func() {
+		if err != nil {
+			stmt, args, serr := qb.ToSql()
+			if serr != nil {
+				err = fmt.Errorf("row %d\nqb:\n%s\nerr: %w", index, serr.Error(), err)
+			} else {
+				err = fmt.Errorf("row %d\nquery:\n%s\nargs:\n%+v\nerr: %w", index, stmt, args, err)
+			}
+
+		}
+	}()
 
 	var (
 		argsExp, argsRcv map[string]any
