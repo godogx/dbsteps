@@ -618,7 +618,12 @@ func (t *tableQuery) receiveRow(index int, row any, _ []string, rawValues []stri
 			if serr != nil {
 				err = fmt.Errorf("row %d\nqb:\n%s\nerr: %w", index, serr.Error(), err)
 			} else {
-				err = fmt.Errorf("row %d\nquery:\n%s\nargs:\n%+v\nerr: %w", index, stmt, args, err)
+				sargs := ""
+				for i, arg := range args {
+					sargs += fmt.Sprintf("%d: %#v, ", i, arg)
+				}
+
+				err = fmt.Errorf("row %d\nquery:\n%s\nargs:\n%s\nerr: %w", index, stmt, sargs, err)
 			}
 
 		}
