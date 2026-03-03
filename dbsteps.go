@@ -265,6 +265,9 @@ type Manager struct {
 	TableMapper *TableMapper
 	Instances   map[string]Instance
 
+	// DumpAllColumns dumps all columns of existing rows in the table on assertion failure.
+	DumpAllColumns bool
+
 	// Deprecated: use VS.JSONComparer.Vars.
 	Vars *shared.Vars
 
@@ -518,15 +521,16 @@ func (t *testingT) Errorf(format string, args ...any) {
 }
 
 type tableQuery struct {
-	storage       *sqluct.Storage
-	mapper        *TableMapper
-	table         string
-	data          [][]string
-	row           any
-	colNames      []string
-	skipWhereCols []string
-	postCheck     []string
-	vs            *shared.Vars
+	storage        *sqluct.Storage
+	mapper         *TableMapper
+	table          string
+	data           [][]string
+	row            any
+	colNames       []string
+	skipWhereCols  []string
+	postCheck      []string
+	dumpAllColumns bool
+	vs             *shared.Vars
 }
 
 func (t *tableQuery) exposeContents(err error) error {
@@ -534,7 +538,7 @@ func (t *tableQuery) exposeContents(err error) error {
 
 	var colNames []string
 
-	if t.data != nil {
+	if t.data != nil && !t.dumpAllColumns {
 		colNames = t.data[0]
 	}
 
@@ -585,12 +589,13 @@ func (m *Manager) makeTableQuery(ctx context.Context, tableName, dbName string, 
 	ctx, vs := m.VS.Vars(ctx)
 
 	t := tableQuery{
-		storage: instance.Storage,
-		mapper:  m.TableMapper,
-		table:   tableName,
-		data:    data,
-		row:     row,
-		vs:      vs,
+		storage:        instance.Storage,
+		mapper:         m.TableMapper,
+		table:          tableName,
+		dumpAllColumns: m.DumpAllColumns,
+		data:           data,
+		row:            row,
+		vs:             vs,
 	}
 
 	if t.data != nil {
