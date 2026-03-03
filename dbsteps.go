@@ -265,6 +265,12 @@ type Manager struct {
 	TableMapper *TableMapper
 	Instances   map[string]Instance
 
+	// DumpAllColumns dumps all columns of existing rows in the table on assertion failure.
+	DumpAllColumns bool
+
+	// SkipTimeInfer disables time.Time inference from string values.
+	SkipTimeInfer bool
+
 	// Deprecated: use VS.JSONComparer.Vars.
 	Vars *shared.Vars
 
@@ -518,15 +524,16 @@ func (t *testingT) Errorf(format string, args ...any) {
 }
 
 type tableQuery struct {
-	storage       *sqluct.Storage
-	mapper        *TableMapper
-	table         string
-	data          [][]string
-	row           any
-	colNames      []string
-	skipWhereCols []string
-	postCheck     []string
-	vs            *shared.Vars
+	storage        *sqluct.Storage
+	mapper         *TableMapper
+	table          string
+	data           [][]string
+	row            any
+	colNames       []string
+	skipWhereCols  []string
+	postCheck      []string
+	dumpAllColumns bool
+	vs             *shared.Vars
 }
 
 func (t *tableQuery) exposeContents(err error) error {
@@ -534,7 +541,7 @@ func (t *tableQuery) exposeContents(err error) error {
 
 	var colNames []string
 
-	if t.data != nil {
+	if t.data != nil && !t.dumpAllColumns {
 		colNames = t.data[0]
 	}
 
@@ -542,7 +549,7 @@ func (t *tableQuery) exposeContents(err error) error {
 	if queryErr != nil {
 		err = fmt.Errorf("%w, failed to query existing rows: %s", err, queryErr.Error())
 	} else {
-		err = fmt.Errorf("%w, rows available:\n%v", err, table)
+		err = fmt.Errorf("%w, rows available in %s:\n%v", err, t.table, table)
 	}
 
 	return err
@@ -585,12 +592,13 @@ func (m *Manager) makeTableQuery(ctx context.Context, tableName, dbName string, 
 	ctx, vs := m.VS.Vars(ctx)
 
 	t := tableQuery{
-		storage: instance.Storage,
-		mapper:  m.TableMapper,
-		table:   tableName,
-		data:    data,
-		row:     row,
-		vs:      vs,
+		storage:        instance.Storage,
+		mapper:         m.TableMapper,
+		table:          tableName,
+		dumpAllColumns: m.DumpAllColumns,
+		data:           data,
+		row:            row,
+		vs:             vs,
 	}
 
 	if t.data != nil {
@@ -603,15 +611,25 @@ func (m *Manager) makeTableQuery(ctx context.Context, tableName, dbName string, 
 }
 
 func (t *tableQuery) receiveRow(index int, row any, _ []string, rawValues []string) (err error) {
-	defer func() {
-		if err != nil {
-			err = fmt.Errorf("row %d: %w", index, err)
-		}
-	}()
-
 	qb := t.storage.QueryBuilder().
 		Select(t.colNames...).
 		From(t.table)
+
+	defer func() {
+		if err != nil {
+			stmt, args, serr := qb.ToSql()
+			if serr != nil {
+				err = fmt.Errorf("row %d\nqb:\n%s\nerr: %w", index, serr.Error(), err)
+			} else {
+				sargs := ""
+				for i, arg := range args {
+					sargs += fmt.Sprintf("%d: %#v, ", i, arg)
+				}
+
+				err = fmt.Errorf("row %d\nquery:\n%s\nargs:\n%s\nerr: %w", index, stmt, sargs, err)
+			}
+		}
+	}()
 
 	var (
 		argsExp, argsRcv map[string]any
@@ -822,11 +840,12 @@ func (m *Manager) assertRows(ctx context.Context, tableName, dbName string, data
 
 	// Iterating rows.
 	err = m.TableMapper.IterateTable(IterateConfig{
-		Data:       data,
-		Item:       t.row,
-		SkipDecode: t.skipDecode,
-		Replaces:   replaces,
-		ReceiveRow: t.receiveRow,
+		Data:          data,
+		Item:          t.row,
+		SkipDecode:    t.skipDecode,
+		Replaces:      replaces,
+		ReceiveRow:    t.receiveRow,
+		SkipTimeInfer: m.SkipTimeInfer,
 	})
 
 	if err == nil && onSetErr != nil {
