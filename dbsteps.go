@@ -546,7 +546,7 @@ func (t *tableQuery) exposeContents(err error) error {
 	if queryErr != nil {
 		err = fmt.Errorf("%w, failed to query existing rows: %s", err, queryErr.Error())
 	} else {
-		err = fmt.Errorf("%w, rows available:\n%v", err, table)
+		err = fmt.Errorf("%w, rows available in %s:\n%v", err, t.table, table)
 	}
 
 	return err
