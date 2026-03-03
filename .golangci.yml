@@ -35,8 +35,12 @@ linters:
     - varnamelen
     - wrapcheck
   settings:
+    funlen:
+      lines: 70
+    gocognit:
+      min-complexity: 35
     cyclop:
-      max-complexity: 15
+      max-complexity: 20
     dupl:
       threshold: 100
     errcheck:

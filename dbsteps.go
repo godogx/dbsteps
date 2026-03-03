@@ -628,7 +628,6 @@ func (t *tableQuery) receiveRow(index int, row any, _ []string, rawValues []stri
 
 				err = fmt.Errorf("row %d\nquery:\n%s\nargs:\n%s\nerr: %w", index, stmt, sargs, err)
 			}
-
 		}
 	}()
 
