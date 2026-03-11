@@ -1132,7 +1132,8 @@ func (t *tableQuery) renderRows(colNames []string, res map[string][]string, widt
 			continue
 		}
 
-		result += " " + col + strings.Repeat(" ", width[col]-len(col)) + " |"
+		colEscaped := escapeGherkinCell(col)
+		result += " " + colEscaped + strings.Repeat(" ", width[col]-len(colEscaped)) + " |"
 	}
 
 	result += "\n"
@@ -1146,7 +1147,7 @@ func (t *tableQuery) renderRows(colNames []string, res map[string][]string, widt
 				continue
 			}
 
-			v := vv[i]
+			v := escapeGherkinCell(vv[i])
 			result += " " + v + strings.Repeat(" ", width[col]-len(v)) + " |"
 		}
 
@@ -1195,11 +1196,34 @@ func (t *tableQuery) formatRow(rows *sqlx.Rows, cols []string, width map[string]
 		}
 
 		if len(v) > width[col] {
-			width[col] = len(v)
+			width[col] = len(escapeGherkinCell(v))
 		}
 
 		res[col] = append(res[col], v)
 	}
 
 	return nil
+}
+
+func escapeGherkinCell(cell string) string {
+	if cell == "" {
+		return cell
+	}
+
+	var b strings.Builder
+
+	b.Grow(len(cell))
+
+	for _, r := range cell {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case '|':
+			b.WriteString(`\|`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
 }
