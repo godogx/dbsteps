@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,12 +20,12 @@ func main() {
 	}
 	flag.Parse()
 
-	input, err := io.ReadAll(os.Stdin)
+	input, err := readInput()
 	if err != nil {
 		fatal(err)
 	}
 
-	rows, err := parseTable(string(input))
+	rows, err := parseTable(input)
 	if err != nil {
 		fatal(err)
 	}
@@ -42,6 +43,60 @@ func fatal(err error) {
 	os.Exit(1)
 }
 
+func readInput() (string, error) {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return "", err
+	}
+
+	if info.Mode()&os.ModeCharDevice == 0 {
+		input, err := io.ReadAll(os.Stdin)
+
+		return string(input), err
+	}
+
+	fmt.Fprintln(os.Stderr, "Paste table, end with an empty line (or Ctrl-D).")
+
+	var b strings.Builder
+
+	reader := bufio.NewReader(os.Stdin)
+	sawData := false
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
+		}
+
+		if err == io.EOF && line == "" {
+			break
+		}
+
+		trimmed := strings.TrimRight(line, "\r\n")
+		if trimmed == "" {
+			if sawData {
+				break
+			}
+
+			if err == io.EOF {
+				break
+			}
+
+			continue
+		}
+
+		sawData = true
+
+		b.WriteString(line)
+
+		if err == io.EOF {
+			break
+		}
+	}
+
+	return b.String(), nil
+}
+
 func parseTable(input string) ([][]string, error) {
 	lines := strings.Split(input, "\n")
 	rows := make([][]string, 0, len(lines))
@@ -56,12 +111,7 @@ func parseTable(input string) ([][]string, error) {
 			return nil, fmt.Errorf("invalid row (no pipes): %q", line) //nolint:err113
 		}
 
-		parts := strings.Split(line, "|")
-		cells := make([]string, 0, len(parts))
-
-		for _, p := range parts {
-			cells = append(cells, strings.TrimSpace(p))
-		}
+		cells := splitRow(line)
 
 		// Drop empty leading/trailing cells from leading/trailing pipes.
 		if len(cells) > 0 && cells[0] == "" {
@@ -91,6 +141,53 @@ func parseTable(input string) ([][]string, error) {
 	}
 
 	return rows, nil
+}
+
+func splitRow(line string) []string {
+	var (
+		cells []string
+		b     strings.Builder
+	)
+
+	escaped := false
+
+	flush := func() {
+		cells = append(cells, strings.TrimSpace(b.String()))
+		b.Reset()
+	}
+
+	for _, r := range line {
+		if escaped {
+			switch r {
+			case '|', '\\':
+				b.WriteRune(r)
+			default:
+				b.WriteByte('\\')
+				b.WriteRune(r)
+			}
+
+			escaped = false
+
+			continue
+		}
+
+		switch r {
+		case '\\':
+			escaped = true
+		case '|':
+			flush()
+		default:
+			b.WriteRune(r)
+		}
+	}
+
+	if escaped {
+		b.WriteByte('\\')
+	}
+
+	flush()
+
+	return cells
 }
 
 func transpose(in [][]string) ([][]string, error) {
@@ -123,8 +220,9 @@ func formatTable(rows [][]string) string {
 
 	for _, row := range rows {
 		for i, cell := range row {
-			if len(cell) > widths[i] {
-				widths[i] = len(cell)
+			escaped := escapeCell(cell)
+			if len(escaped) > widths[i] {
+				widths[i] = len(escaped)
 			}
 		}
 	}
@@ -134,10 +232,12 @@ func formatTable(rows [][]string) string {
 		b.WriteString("|")
 
 		for i, cell := range row {
-			b.WriteString(" ")
-			b.WriteString(cell)
+			escaped := escapeCell(cell)
 
-			for pad := widths[i] - len(cell); pad > 0; pad-- {
+			b.WriteString(" ")
+			b.WriteString(escaped)
+
+			for pad := widths[i] - len(escaped); pad > 0; pad-- {
 				b.WriteByte(' ')
 			}
 
@@ -145,6 +245,29 @@ func formatTable(rows [][]string) string {
 		}
 
 		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+func escapeCell(cell string) string {
+	if cell == "" {
+		return cell
+	}
+
+	var b strings.Builder
+
+	b.Grow(len(cell))
+
+	for _, r := range cell {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case '|':
+			b.WriteString(`\|`)
+		default:
+			b.WriteRune(r)
+		}
 	}
 
 	return b.String()

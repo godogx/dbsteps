@@ -188,6 +188,14 @@ cat <<'EOF' | ./dbsteps-transpose
 EOF
 ```
 
+Note on interactive paste:
+If you paste a very long single-line row directly into a terminal, the terminal's line buffer can stop accepting input. In that case, prefer piping from the clipboard or a file:
+
+```sh
+pbpaste | ./dbsteps-transpose
+./dbsteps-transpose < /path/to/table.txt
+```
+
 ## Concurrent Usage
 
 Please note, due to the centralized nature of the database instance, scenarios that work with the same tables would conflict.
