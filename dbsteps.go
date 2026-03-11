@@ -633,6 +633,8 @@ type tableQuery struct {
 	postCheck      []string
 	dumpAllColumns bool
 	vs             *shared.Vars
+	lastRowIndex   int
+	lastRowValues  []string
 }
 
 func (t *tableQuery) exposeContents(err error) error {
@@ -644,11 +646,15 @@ func (t *tableQuery) exposeContents(err error) error {
 		colNames = t.data[0]
 	}
 
-	table, queryErr := t.queryExistingRows(t.storage, colNames, qb)
+	dump, queryErr := t.queryExistingRows(t.storage, colNames, qb)
 	if queryErr != nil {
 		err = fmt.Errorf("%w, failed to query existing rows: %s", err, queryErr.Error())
 	} else {
-		err = fmt.Errorf("%w, rows available in %s:\n%v", err, t.table, table)
+		err = fmt.Errorf("%w, rows available in %s:\n%v", err, t.table, dump.table)
+
+		if diff := t.diffClosestRow(dump.res, colNames, dump.cnt, t.expectedRow(colNames)); diff != "" {
+			err = fmt.Errorf("%w\n%v", err, diff)
+		}
 	}
 
 	return err
@@ -710,24 +716,15 @@ func (m *Manager) makeTableQuery(ctx context.Context, tableName, dbName string, 
 }
 
 func (t *tableQuery) receiveRow(index int, row any, _ []string, rawValues []string) (err error) {
+	t.lastRowIndex = index
+	t.lastRowValues = append(t.lastRowValues[:0], rawValues...)
+
 	qb := t.storage.QueryBuilder().
 		Select(t.colNames...).
 		From(t.table)
 
 	defer func() {
-		if err != nil {
-			stmt, args, serr := qb.ToSql()
-			if serr != nil {
-				err = fmt.Errorf("row %d\nqb:\n%s\nerr: %w", index, serr.Error(), err)
-			} else {
-				sargs := ""
-				for i, arg := range args {
-					sargs += fmt.Sprintf("%d: %#v, ", i, arg)
-				}
-
-				err = fmt.Errorf("row %d\nquery:\n%s\nargs:\n%s\nerr: %w", index, stmt, sargs, err)
-			}
-		}
+		err = t.decorateReceiveRowErr(err, index, qb)
 	}()
 
 	var (
@@ -778,6 +775,24 @@ func (t *tableQuery) receiveRow(index int, row any, _ []string, rawValues []stri
 	t.postCheck = t.postCheck[:0]
 
 	return t.doPostCheck(t.colNames, pc, argsExp, argsRcv, rawValues)
+}
+
+func (t *tableQuery) decorateReceiveRowErr(err error, index int, qb squirrel.SelectBuilder) error {
+	if err == nil {
+		return nil
+	}
+
+	stmt, args, serr := qb.ToSql()
+	if serr != nil {
+		return fmt.Errorf("row %d\nqb:\n%s\nerr: %w", index, serr.Error(), err)
+	}
+
+	var b strings.Builder
+	for i, arg := range args {
+		fmt.Fprintf(&b, "%d: %#v, ", i, arg)
+	}
+
+	return fmt.Errorf("row %d\nquery:\n%s\nargs:\n%s\nerr: %w", index, stmt, b.String(), err)
 }
 
 func (t *tableQuery) scanMap(qb squirrel.SelectBuilder) (
@@ -1078,10 +1093,16 @@ var (
 	errNonRectangularTable = errors.New("non-rectangular table")
 )
 
-func (t *tableQuery) queryExistingRows(db *sqluct.Storage, colNames []string, qb squirrel.Sqlizer) (table string, err error) {
+type tableDump struct {
+	table string
+	res   map[string][]string
+	cnt   int
+}
+
+func (t *tableQuery) queryExistingRows(db *sqluct.Storage, colNames []string, qb squirrel.Sqlizer) (dump tableDump, err error) {
 	rows, err := db.Query(context.Background(), qb)
 	if err != nil {
-		return "", err
+		return dump, err
 	}
 
 	defer func() {
@@ -1092,7 +1113,7 @@ func (t *tableQuery) queryExistingRows(db *sqluct.Storage, colNames []string, qb
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return "", err
+		return dump, err
 	}
 
 	if len(colNames) == 0 {
@@ -1115,13 +1136,19 @@ func (t *tableQuery) queryExistingRows(db *sqluct.Storage, colNames []string, qb
 
 		err = t.formatRow(rows, cols, width, res)
 		if err != nil {
-			return "", err
+			return dump, err
 		}
 	}
 
 	result := t.renderRows(colNames, res, width, cnt)
 
-	return result, rows.Err()
+	dump = tableDump{
+		table: result,
+		res:   res,
+		cnt:   cnt,
+	}
+
+	return dump, rows.Err()
 }
 
 func (t *tableQuery) renderRows(colNames []string, res map[string][]string, width map[string]int, cnt int) string {
@@ -1223,6 +1250,156 @@ func escapeGherkinCell(cell string) string {
 		default:
 			b.WriteRune(r)
 		}
+	}
+
+	return b.String()
+}
+
+func (t *tableQuery) expectedRow(colNames []string) []string {
+	if len(t.lastRowValues) == len(colNames) {
+		return t.lastRowValues
+	}
+
+	if t.data == nil || len(t.data) != 2 {
+		return nil
+	}
+
+	if len(t.data[1]) != len(colNames) {
+		return nil
+	}
+
+	return t.data[1]
+}
+
+func (t *tableQuery) diffClosestRow(res map[string][]string, colNames []string, cnt int, expRow []string) string {
+	if len(colNames) == 0 {
+		return ""
+	}
+
+	if cnt == 0 {
+		return ""
+	}
+
+	if len(expRow) != len(colNames) {
+		return ""
+	}
+
+	bestRow := -1
+	bestMismatch := int(^uint(0) >> 1)
+	bestCompared := 0
+
+	for rowIdx := 0; rowIdx < cnt; rowIdx++ {
+		mismatches, compared := rowMismatch(res, colNames, expRow, rowIdx)
+		if compared == 0 {
+			continue
+		}
+
+		if mismatches < bestMismatch || (mismatches == bestMismatch && compared > bestCompared) {
+			bestMismatch = mismatches
+			bestRow = rowIdx
+			bestCompared = compared
+		}
+	}
+
+	if bestRow == -1 {
+		return ""
+	}
+
+	diff := make([][]string, 0, len(colNames)+1)
+	diff = append(diff, []string{"column", "expected", "received"})
+
+	diff = append(diff, diffRow(res, colNames, expRow, bestRow)...)
+
+	if len(diff) == 1 {
+		return ""
+	}
+
+	matches := bestCompared - bestMismatch
+	if matches == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("Diff vs closest row (row %d, matched %d/%d columns):\n%s",
+		bestRow+1, matches, bestCompared, formatGherkinTable(diff))
+}
+
+func rowMismatch(res map[string][]string, colNames []string, expRow []string, rowIdx int) (int, int) {
+	mismatches := 0
+	compared := 0
+
+	for i, col := range colNames {
+		values, ok := res[col]
+		if !ok || len(values) <= rowIdx {
+			continue
+		}
+
+		compared++
+
+		if expRow[i] != values[rowIdx] {
+			mismatches++
+		}
+	}
+
+	return mismatches, compared
+}
+
+func diffRow(res map[string][]string, colNames []string, expRow []string, rowIdx int) [][]string {
+	rows := make([][]string, 0, len(colNames))
+
+	for i, col := range colNames {
+		values, ok := res[col]
+		if !ok || len(values) <= rowIdx {
+			continue
+		}
+
+		exp := expRow[i]
+		rcv := values[rowIdx]
+
+		if exp == rcv {
+			continue
+		}
+
+		rows = append(rows, []string{col, exp, rcv})
+	}
+
+	return rows
+}
+
+func formatGherkinTable(rows [][]string) string {
+	if len(rows) == 0 {
+		return ""
+	}
+
+	widths := make([]int, len(rows[0]))
+
+	for _, row := range rows {
+		for i, cell := range row {
+			escaped := escapeGherkinCell(cell)
+			if len(escaped) > widths[i] {
+				widths[i] = len(escaped)
+			}
+		}
+	}
+
+	var b strings.Builder
+
+	for _, row := range rows {
+		b.WriteString("|")
+
+		for i, cell := range row {
+			escaped := escapeGherkinCell(cell)
+
+			b.WriteString(" ")
+			b.WriteString(escaped)
+
+			for pad := widths[i] - len(escaped); pad > 0; pad-- {
+				b.WriteByte(' ')
+			}
+
+			b.WriteString(" |")
+		}
+
+		b.WriteString("\n")
 	}
 
 	return b.String()
