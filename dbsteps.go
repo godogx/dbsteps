@@ -56,6 +56,13 @@
 //			 | 2  | foo-1 | def | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
 //			 | 3  | foo-2 | hij | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
 //
+//		   And these transposed rows are stored in table "my_table" of database "my_db"
+//			 | id         | 1                    | 2                    | 3                    |
+//			 | foo        | foo-1                | foo-1                | foo-2                |
+//			 | bar        | abc                  | def                  | hij                  |
+//			 | created_at | 2021-01-01T00:00:00Z | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
+//			 | deleted_at | NULL                 | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
+//
 //	 Or with an CSV file
 //
 //		   And rows from this file are stored in table "my_table" of database "my_db"
@@ -85,6 +92,13 @@
 //		 | $id1 | foo-1 | abc | 2021-01-01T00:00:00Z | NULL                 |
 //		 | $id2 | foo-1 | def | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
 //		 | $id3 | foo-2 | hij | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
+//
+//	   Then these transposed rows are available in table "my_table" of database "my_db"
+//		 | id         | $id1                 | $id2                 | $id3                 |
+//		 | foo        | foo-1                | foo-1                | foo-2                |
+//		 | bar        | abc                  | def                  | hij                  |
+//		 | created_at | 2021-01-01T00:00:00Z | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
+//		 | deleted_at | NULL                 | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
 //
 // Rows can be also loaded from CSV file.
 //
@@ -178,6 +192,11 @@ func (m *Manager) registerPrerequisites(s *godog.ScenarioContext) {
 			return m.givenTheseRowsAreStoredInTableOfDatabase(ctx, tableName, database, Rows(data))
 		})
 
+	s.Given(`^these transposed rows are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
+		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
+			return m.givenTheseTransposedRowsAreStoredInTableOfDatabase(ctx, tableName, database, data)
+		})
+
 	s.Given(`^rows from this file are stored in table "([^"]*)" of database "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName, database string, filePath string) (context.Context, error) {
 			return m.givenRowsFromThisFileAreStoredInTableOfDatabase(ctx, tableName, database, filePath)
@@ -186,6 +205,11 @@ func (m *Manager) registerPrerequisites(s *godog.ScenarioContext) {
 	s.Given(`^these rows are stored in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
 			return m.givenTheseRowsAreStoredInTableOfDatabase(ctx, tableName, Default, Rows(data))
+		})
+
+	s.Given(`^these transposed rows are stored in table "([^"]*)"[:]?$`,
+		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
+			return m.givenTheseTransposedRowsAreStoredInTableOfDatabase(ctx, tableName, Default, data)
 		})
 
 	s.Given(`^rows from this file are stored in table "([^"]*)"[:]?$`,
@@ -205,6 +229,11 @@ func (m *Manager) registerAssertions(s *godog.ScenarioContext) {
 			return m.assertRows(ctx, tableName, database, Rows(data), true)
 		})
 
+	s.Then(`^only these transposed rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
+			return m.assertTransposedRows(ctx, tableName, database, data, true)
+		})
+
 	s.Then(`^only rows from this file are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, filePath string) (context.Context, error) {
 			return m.assertRowsFromFile(ctx, tableName, Default, filePath, true)
@@ -213,6 +242,11 @@ func (m *Manager) registerAssertions(s *godog.ScenarioContext) {
 	s.Then(`^only these rows are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
 			return m.assertRows(ctx, tableName, Default, Rows(data), true)
+		})
+
+	s.Then(`^only these transposed rows are available in table "([^"]*)"[:]?$`,
+		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
+			return m.assertTransposedRows(ctx, tableName, Default, data, true)
 		})
 
 	s.Then(`^no rows are available in table "([^"]*)" of database "([^"]*)"$`,
@@ -235,6 +269,11 @@ func (m *Manager) registerAssertions(s *godog.ScenarioContext) {
 			return m.assertRows(ctx, tableName, database, Rows(data), false)
 		})
 
+	s.Step(`^these transposed rows are available in table "([^"]*)" of database "([^"]*)"[:]?$`,
+		func(ctx context.Context, tableName, database string, data *godog.Table) (context.Context, error) {
+			return m.assertTransposedRows(ctx, tableName, database, data, false)
+		})
+
 	s.Then(`^rows from this file are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, filePath string) (context.Context, error) {
 			return m.assertRowsFromFile(ctx, tableName, Default, filePath, false)
@@ -243,6 +282,11 @@ func (m *Manager) registerAssertions(s *godog.ScenarioContext) {
 	s.Then(`^these rows are available in table "([^"]*)"[:]?$`,
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
 			return m.assertRows(ctx, tableName, Default, Rows(data), false)
+		})
+
+	s.Then(`^these transposed rows are available in table "([^"]*)"[:]?$`,
+		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
+			return m.assertTransposedRows(ctx, tableName, Default, data, false)
 		})
 }
 
@@ -435,6 +479,50 @@ func Rows(data *godog.Table) [][]string {
 	return d
 }
 
+// RowsTransposed converts transposed godog table to a nested slice of strings.
+func RowsTransposed(data *godog.Table) ([][]string, error) {
+	return transposeTable(Rows(data))
+}
+
+func transposeTable(data [][]string) ([][]string, error) {
+	if len(data) < 2 {
+		return nil, errRowRequired
+	}
+
+	cols := len(data[0])
+	if cols < 2 {
+		return nil, errRowRequired
+	}
+
+	for i := 1; i < len(data); i++ {
+		if len(data[i]) != cols {
+			return nil, fmt.Errorf("%w: row %d has %d cells, expected %d",
+				errNonRectangularTable, i, len(data[i]), cols)
+		}
+	}
+
+	out := make([][]string, cols)
+	header := make([]string, len(data))
+
+	for r := 0; r < len(data); r++ {
+		header[r] = data[r][0]
+	}
+
+	out[0] = header
+
+	for c := 1; c < cols; c++ {
+		row := make([]string, len(data))
+
+		for r := 0; r < len(data); r++ {
+			row[r] = data[r][c]
+		}
+
+		out[c] = row
+	}
+
+	return out, nil
+}
+
 func (m *Manager) givenRowsFromThisFileAreStoredInTableOfDatabase(ctx context.Context, tableName, dbName string, filePath string) (context.Context, error) {
 	data, err := loadTableFromFile(filePath)
 	if err != nil {
@@ -442,6 +530,17 @@ func (m *Manager) givenRowsFromThisFileAreStoredInTableOfDatabase(ctx context.Co
 	}
 
 	return m.givenTheseRowsAreStoredInTableOfDatabase(ctx, tableName, dbName, data)
+}
+
+func (m *Manager) givenTheseTransposedRowsAreStoredInTableOfDatabase(
+	ctx context.Context, tableName, dbName string, data *godog.Table,
+) (context.Context, error) {
+	rows, err := RowsTransposed(data)
+	if err != nil {
+		return ctx, err
+	}
+
+	return m.givenTheseRowsAreStoredInTableOfDatabase(ctx, tableName, dbName, rows)
 }
 
 func (m *Manager) givenTheseRowsAreStoredInTableOfDatabase(ctx context.Context, tableName, dbName string, data [][]string) (context.Context, error) {
@@ -864,6 +963,17 @@ func (m *Manager) assertRowsFromFile(ctx context.Context, tableName, dbName stri
 	return m.assertRows(ctx, tableName, dbName, data, exhaustiveList)
 }
 
+func (m *Manager) assertTransposedRows(
+	ctx context.Context, tableName, dbName string, data *godog.Table, exhaustiveList bool,
+) (context.Context, error) {
+	rows, err := RowsTransposed(data)
+	if err != nil {
+		return ctx, err
+	}
+
+	return m.assertRows(ctx, tableName, dbName, rows, exhaustiveList)
+}
+
 func (t *tableQuery) doPostCheck(colNames []string, postCheck []string, argsExp, argsRcv map[string]any, rawValues []string) error {
 	for i, name := range colNames {
 		if t.vs.IsVar(rawValues[i]) {
@@ -965,6 +1075,7 @@ var (
 	errWrongType           = errors.New("failed to assert type *any")
 	errInvalidNumberOfRows = errors.New("invalid number of rows in table")
 	errUnknownDatabase     = errors.New("unknown database")
+	errNonRectangularTable = errors.New("non-rectangular table")
 )
 
 func (t *tableQuery) queryExistingRows(db *sqluct.Storage, colNames []string, qb squirrel.Sqlizer) (table string, err error) {

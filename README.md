@@ -88,6 +88,15 @@ And these rows are stored in table "my_table" of database "my_db"
 ```
 
 ```gherkin
+And these transposed rows are stored in table "my_table" of database "my_db"
+| id         | 1                    | 2                    | 3                    |
+| foo        | foo-1                | foo-1                | foo-2                |
+| bar        | abc                  | def                  | hij                  |
+| created_at | 2021-01-01T00:00:00Z | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
+| deleted_at | NULL                 | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
+```
+
+```gherkin
 And rows from this file are stored in table "my_table" of database "my_db"
  """
  path/to/rows.csv
@@ -117,6 +126,15 @@ Then these rows are available in table "my_table" of database "my_db"
 | $id1 | foo-1 | abc | 2021-01-01T00:00:00Z | NULL                 |
 | $id2 | foo-1 | def | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
 | $id3 | foo-2 | hij | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
+```
+
+```gherkin
+Then these transposed rows are available in table "my_table" of database "my_db"
+| id         | $id1                 | $id2                 | $id3                 |
+| foo        | foo-1                | foo-1                | foo-2                |
+| bar        | abc                  | def                  | hij                  |
+| created_at | 2021-01-01T00:00:00Z | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
+| deleted_at | NULL                 | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
 ```
 
 ```gherkin
@@ -151,6 +169,24 @@ And no rows are available in table "my_another_table" of database "my_db"
 ```
 
 The name of database instance `of database "my_db"` can be omitted in all steps, in such case `"default"` will be used from database instance name.
+
+## CLI: Transpose Tables
+
+Use `dbsteps-transpose` to transpose a Gherkin-style table from stdin.
+
+```
+go build -o dbsteps-transpose ./cmd/dbsteps-transpose
+```
+
+```sh
+cat <<'EOF' | ./dbsteps-transpose
+| id         | $id1                 | $id2                 | $id3                 |
+| foo        | foo-1                | foo-2                |                      |
+| bar        | abc                  | def                  | hij                  |
+| created_at | 2021-01-01T00:00:00Z | 2021-01-02T00:00:00Z | 2021-01-03T00:00:00Z |
+| deleted_At | NULL                 | 2021-01-03T00:00:00Z | 2021-01-03T00:00:00Z |
+EOF
+```
 
 ## Concurrent Usage
 
