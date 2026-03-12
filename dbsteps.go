@@ -633,8 +633,8 @@ type tableQuery struct {
 	postCheck      []string
 	dumpAllColumns bool
 	vs             *shared.Vars
-	lastRowIndex   int
-	lastRowValues  []string
+	lastColNames   []string
+	lastExpected   map[string]string
 }
 
 func (t *tableQuery) exposeContents(err error) error {
@@ -652,7 +652,12 @@ func (t *tableQuery) exposeContents(err error) error {
 	} else {
 		err = fmt.Errorf("%w, rows available in %s:\n%v", err, t.table, dump.table)
 
-		if diff := t.diffClosestRow(dump.res, colNames, dump.cnt, t.expectedRow(colNames)); diff != "" {
+		diffCols := colNames
+		if len(diffCols) == 0 {
+			diffCols = t.lastColNames
+		}
+
+		if diff := t.diffClosestRow(dump.res, diffCols, dump.cnt, t.lastExpected); diff != "" {
 			err = fmt.Errorf("%w\n%v", err, diff)
 		}
 	}
@@ -716,9 +721,6 @@ func (m *Manager) makeTableQuery(ctx context.Context, tableName, dbName string, 
 }
 
 func (t *tableQuery) receiveRow(index int, row any, _ []string, rawValues []string) (err error) {
-	t.lastRowIndex = index
-	t.lastRowValues = append(t.lastRowValues[:0], rawValues...)
-
 	qb := t.storage.QueryBuilder().
 		Select(t.colNames...).
 		From(t.table)
@@ -954,11 +956,16 @@ func (m *Manager) assertRows(ctx context.Context, tableName, dbName string, data
 
 	// Iterating rows.
 	err = m.TableMapper.IterateTable(IterateConfig{
-		Data:          data,
-		Item:          t.row,
-		SkipDecode:    t.skipDecode,
-		Replaces:      replaces,
-		ReceiveRow:    t.receiveRow,
+		Data:       data,
+		Item:       t.row,
+		SkipDecode: t.skipDecode,
+		Replaces:   replaces,
+		ReceiveRow: func(index int, row any, colNames []string, rawValues []string) error {
+			t.lastColNames = append(t.lastColNames[:0], colNames...)
+			t.lastExpected = t.buildExpectedRow(colNames, rawValues, replaces)
+
+			return t.receiveRow(index, row, colNames, rawValues)
+		},
 		SkipTimeInfer: m.SkipTimeInfer,
 	})
 
@@ -1255,24 +1262,13 @@ func escapeGherkinCell(cell string) string {
 	return b.String()
 }
 
-func (t *tableQuery) expectedRow(colNames []string) []string {
-	if len(t.lastRowValues) == len(colNames) {
-		return t.lastRowValues
-	}
-
-	if t.data == nil || len(t.data) != 2 {
-		return nil
-	}
-
-	if len(t.data[1]) != len(colNames) {
-		return nil
-	}
-
-	return t.data[1]
-}
-
-func (t *tableQuery) diffClosestRow(res map[string][]string, colNames []string, cnt int, expRow []string) string {
-	if len(colNames) == 0 {
+func (t *tableQuery) diffClosestRow(
+	res map[string][]string,
+	colOrder []string,
+	cnt int,
+	expected map[string]string,
+) string {
+	if len(colOrder) == 0 {
 		return ""
 	}
 
@@ -1280,7 +1276,7 @@ func (t *tableQuery) diffClosestRow(res map[string][]string, colNames []string, 
 		return ""
 	}
 
-	if len(expRow) != len(colNames) {
+	if len(expected) == 0 {
 		return ""
 	}
 
@@ -1289,7 +1285,7 @@ func (t *tableQuery) diffClosestRow(res map[string][]string, colNames []string, 
 	bestCompared := 0
 
 	for rowIdx := 0; rowIdx < cnt; rowIdx++ {
-		mismatches, compared := rowMismatch(res, colNames, expRow, rowIdx)
+		mismatches, compared := rowMismatch(res, colOrder, expected, rowIdx)
 		if compared == 0 {
 			continue
 		}
@@ -1305,10 +1301,10 @@ func (t *tableQuery) diffClosestRow(res map[string][]string, colNames []string, 
 		return ""
 	}
 
-	diff := make([][]string, 0, len(colNames)+1)
+	diff := make([][]string, 0, len(colOrder)+1)
 	diff = append(diff, []string{"column", "expected", "received"})
 
-	diff = append(diff, diffRow(res, colNames, expRow, bestRow)...)
+	diff = append(diff, diffRow(res, colOrder, expected, bestRow)...)
 
 	if len(diff) == 1 {
 		return ""
@@ -1323,19 +1319,26 @@ func (t *tableQuery) diffClosestRow(res map[string][]string, colNames []string, 
 		bestRow+1, matches, bestCompared, formatGherkinTable(diff))
 }
 
-func rowMismatch(res map[string][]string, colNames []string, expRow []string, rowIdx int) (int, int) {
+func rowMismatch(res map[string][]string, colOrder []string, expected map[string]string, rowIdx int) (int, int) {
 	mismatches := 0
 	compared := 0
 
-	for i, col := range colNames {
-		values, ok := res[col]
-		if !ok || len(values) <= rowIdx {
+	for _, col := range colOrder {
+		exp, ok := expected[col]
+		if !ok {
 			continue
 		}
 
 		compared++
 
-		if expRow[i] != values[rowIdx] {
+		values, ok := res[col]
+		if !ok || len(values) <= rowIdx {
+			mismatches++
+
+			continue
+		}
+
+		if exp != values[rowIdx] {
 			mismatches++
 		}
 	}
@@ -1343,17 +1346,21 @@ func rowMismatch(res map[string][]string, colNames []string, expRow []string, ro
 	return mismatches, compared
 }
 
-func diffRow(res map[string][]string, colNames []string, expRow []string, rowIdx int) [][]string {
-	rows := make([][]string, 0, len(colNames))
+func diffRow(res map[string][]string, colOrder []string, expected map[string]string, rowIdx int) [][]string {
+	rows := make([][]string, 0, len(colOrder))
 
-	for i, col := range colNames {
-		values, ok := res[col]
-		if !ok || len(values) <= rowIdx {
+	for _, col := range colOrder {
+		exp, ok := expected[col]
+		if !ok {
 			continue
 		}
 
-		exp := expRow[i]
-		rcv := values[rowIdx]
+		var rcv string
+
+		values, ok := res[col]
+		if ok && len(values) > rowIdx {
+			rcv = values[rowIdx]
+		}
 
 		if exp == rcv {
 			continue
@@ -1403,4 +1410,36 @@ func formatGherkinTable(rows [][]string) string {
 	}
 
 	return b.String()
+}
+
+func (t *tableQuery) buildExpectedRow(colNames []string, raw []string, replaces map[string]string) map[string]string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	if len(colNames) != len(raw) {
+		return nil
+	}
+
+	resolved := make(map[string]string, len(raw))
+
+	for i, cell := range raw {
+		value := strings.TrimSuffix(cell, "::string")
+
+		if replaces != nil {
+			if r, ok := replaces[value]; ok {
+				resolved[colNames[i]] = r
+
+				continue
+			}
+		}
+
+		if t.vs != nil && t.vs.IsVar(value) {
+			continue
+		}
+
+		resolved[colNames[i]] = value
+	}
+
+	return resolved
 }
