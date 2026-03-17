@@ -120,6 +120,23 @@ then checked as a foreign key value of another entity. This can be especially he
 If column value represents JSON array or object it is excluded from `WHERE` condition, value assertion is done by
 comparing Go value mapped from database row field with Go value mapped from gherkin table cell.
 
+You can enable retrying table lookups (useful for eventually consistent writes). Retries use exponential backoff and
+only show detailed diff/rows on the last attempt.
+
+```gherkin
+Given I retry table lookups up to 30s
+Then these rows are available in table "my_table" of database "my_db"
+| id   | foo   | bar |
+| $id1 | foo-1 | abc |
+```
+
+```gherkin
+Given I retry table lookups of database "my_db" up to 30s
+Then these transposed rows are available in table "my_table" of database "my_db"
+| id  | $id1 |
+| foo | foo-1 |
+```
+
 ```gherkin
 Then these rows are available in table "my_table" of database "my_db"
 | id   | foo   | bar | created_at           | deleted_at           |
