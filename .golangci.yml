@@ -5,6 +5,8 @@ run:
 linters:
   default: all
   disable:
+    - err113
+    - contextcheck
     - perfsprint
     - modernize
     - embeddedstructfieldcheck

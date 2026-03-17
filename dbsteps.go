@@ -154,6 +154,58 @@ import (
 // Default is the name of default database.
 const Default = "default"
 
+const (
+	retryMinDelay = 50 * time.Millisecond
+	retryMaxDelay = 2 * time.Second
+)
+
+type retryCtxKey struct{}
+
+type retryPolicy struct {
+	defaultTimeout time.Duration
+	defaultSet     bool
+	dbTimeout      map[string]time.Duration
+}
+
+func withRetryTimeout(ctx context.Context, dbName string, timeout time.Duration) context.Context {
+	policy, ok := ctx.Value(retryCtxKey{}).(retryPolicy)
+	if !ok {
+		policy = retryPolicy{}
+	}
+
+	if dbName == "" {
+		policy.defaultTimeout = timeout
+		policy.defaultSet = true
+	} else {
+		if policy.dbTimeout == nil {
+			policy.dbTimeout = make(map[string]time.Duration)
+		}
+
+		policy.dbTimeout[dbName] = timeout
+	}
+
+	return context.WithValue(ctx, retryCtxKey{}, policy)
+}
+
+func retryTimeout(ctx context.Context, dbName string) (time.Duration, bool) {
+	policy, ok := ctx.Value(retryCtxKey{}).(retryPolicy)
+	if !ok {
+		return 0, false
+	}
+
+	if dbName != "" && policy.dbTimeout != nil {
+		if v, found := policy.dbTimeout[dbName]; found {
+			return v, true
+		}
+	}
+
+	if policy.defaultSet {
+		return policy.defaultTimeout, true
+	}
+
+	return 0, false
+}
+
 // RegisterSteps adds database manager context to test suite.
 func (m *Manager) RegisterSteps(s *godog.ScenarioContext) {
 	if m.lock != nil {
@@ -165,6 +217,16 @@ func (m *Manager) RegisterSteps(s *godog.ScenarioContext) {
 }
 
 func (m *Manager) registerPrerequisites(s *godog.ScenarioContext) {
+	s.Step(`^I retry table lookups up to ([^ ]+)$`,
+		func(ctx context.Context, duration string) (context.Context, error) {
+			return m.retryTableLookups(ctx, "", duration)
+		})
+
+	s.Step(`^I retry table lookups of database "([^"]*)" up to ([^ ]+)$`,
+		func(ctx context.Context, dbName, duration string) (context.Context, error) {
+			return m.retryTableLookups(ctx, dbName, duration)
+		})
+
 	s.Given(`^all rows are deleted in table "([^"]*)" of database "([^"]*)"$`,
 		func(ctx context.Context, tableName, dbName string) (context.Context, error) {
 			return m.givenNoRowsInTableOfDatabase(ctx, tableName, dbName)
@@ -288,6 +350,19 @@ func (m *Manager) registerAssertions(s *godog.ScenarioContext) {
 		func(ctx context.Context, tableName string, data *godog.Table) (context.Context, error) {
 			return m.assertTransposedRows(ctx, tableName, Default, data, false)
 		})
+}
+
+func (m *Manager) retryTableLookups(ctx context.Context, dbName, duration string) (context.Context, error) {
+	d, err := time.ParseDuration(duration)
+	if err != nil {
+		return ctx, fmt.Errorf("invalid duration %q: %w", duration, err)
+	}
+
+	if d < 0 {
+		return ctx, fmt.Errorf("invalid duration %q: must be non-negative", duration)
+	}
+
+	return withRetryTimeout(ctx, dbName, d), nil
 }
 
 // NewManager creates an instance of database Manager.
@@ -485,7 +560,7 @@ func RowsTransposed(data *godog.Table) ([][]string, error) {
 }
 
 func transposeTable(data [][]string) ([][]string, error) {
-	if len(data) < 2 {
+	if len(data) < 1 {
 		return nil, errRowRequired
 	}
 
@@ -929,24 +1004,6 @@ func (m *Manager) assertRows(ctx context.Context, tableName, dbName string, data
 		return ctx, err
 	}
 
-	defer func() {
-		// Expose table contents to simplify test debugging.
-		if err != nil {
-			err = t.exposeContents(err)
-		}
-	}()
-
-	if exhaustiveList {
-		err = t.checkCount(ctx)
-		if err != nil {
-			return ctx, err
-		}
-	}
-
-	if data == nil {
-		return ctx, nil
-	}
-
 	var onSetErr error
 
 	replaces, err := t.makeReplaces(&onSetErr)
@@ -954,26 +1011,81 @@ func (m *Manager) assertRows(ctx context.Context, tableName, dbName string, data
 		return ctx, err
 	}
 
-	// Iterating rows.
-	err = m.TableMapper.IterateTable(IterateConfig{
-		Data:       data,
-		Item:       t.row,
-		SkipDecode: t.skipDecode,
-		Replaces:   replaces,
-		ReceiveRow: func(index int, row any, colNames []string, rawValues []string) error {
-			t.lastColNames = append(t.lastColNames[:0], colNames...)
-			t.lastExpected = t.buildExpectedRow(colNames, rawValues, replaces)
+	runOnce := func(expose bool) error {
+		// Expose table contents to simplify test debugging.
+		if exhaustiveList {
+			if err := t.checkCount(ctx); err != nil {
+				if expose {
+					return t.exposeContents(err)
+				}
 
-			return t.receiveRow(index, row, colNames, rawValues)
-		},
-		SkipTimeInfer: m.SkipTimeInfer,
-	})
+				return err
+			}
+		}
 
-	if err == nil && onSetErr != nil {
-		err = onSetErr
+		if data == nil {
+			return nil
+		}
+
+		onSetErr = nil
+
+		// Iterating rows.
+		err = m.TableMapper.IterateTable(IterateConfig{
+			Data:       data,
+			Item:       t.row,
+			SkipDecode: t.skipDecode,
+			Replaces:   replaces,
+			ReceiveRow: func(index int, row any, colNames []string, rawValues []string) error {
+				t.lastColNames = append(t.lastColNames[:0], colNames...)
+				t.lastExpected = t.buildExpectedRow(colNames, rawValues, replaces)
+
+				return t.receiveRow(index, row, colNames, rawValues)
+			},
+			SkipTimeInfer: m.SkipTimeInfer,
+		})
+
+		if err == nil && onSetErr != nil {
+			err = onSetErr
+		}
+
+		if err != nil && expose {
+			return t.exposeContents(err)
+		}
+
+		return err
 	}
 
-	return ctx, err
+	return ctx, m.retryLookup(ctx, dbName, runOnce)
+}
+
+func (m *Manager) retryLookup(ctx context.Context, dbName string, runOnce func(expose bool) error) error {
+	timeout, hasRetry := retryTimeout(ctx, dbName)
+	if !hasRetry || timeout <= 0 {
+		return runOnce(true)
+	}
+
+	deadline := time.Now().Add(timeout)
+	delay := retryMinDelay
+
+	for {
+		err := runOnce(false)
+		if err == nil {
+			return nil
+		}
+
+		if time.Now().Add(delay).After(deadline) {
+			break
+		}
+
+		time.Sleep(delay)
+
+		delay *= 2
+		if delay > retryMaxDelay {
+			delay = retryMaxDelay
+		}
+	}
+
+	return runOnce(true)
 }
 
 func (m *Manager) assertRowsFromFile(ctx context.Context, tableName, dbName string, filePath string, exhaustiveList bool) (context.Context, error) {
